@@ -489,6 +489,7 @@
     },
     {
       "parameters": {
+        "authentication": "oAuth2",
         "documentId": {
           "__rl": true,
           "value": "1NHEAPRSMdIECCZ06QmtVZZIhtocWK-omXAY1ObNQjdw",
@@ -508,7 +509,7 @@
           ]
         },
         "options": {
-          "returnAllMatches": false
+          "returnFirstMatch": true
         }
       },
       "id": "gs-0036",
@@ -520,7 +521,7 @@
         260
       ],
       "credentials": {
-        "googleApi": {
+        "googleSheetsOAuth2Api": {
           "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
           "name": "Google Sheets account"
         }
@@ -568,6 +569,7 @@
     },
     {
       "parameters": {
+        "authentication": "oAuth2",
         "operation": "append",
         "documentId": {
           "__rl": true,
@@ -733,7 +735,7 @@
         360
       ],
       "credentials": {
-        "googleApi": {
+        "googleSheetsOAuth2Api": {
           "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
           "name": "Google Sheets account"
         }

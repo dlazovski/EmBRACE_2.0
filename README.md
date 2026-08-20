@@ -67,7 +67,15 @@ credential id, so n8n will ask you to pick it once.
 
 ### 3. Google Sheets credential
 
-Select your existing Google Sheets credential on `Lookup OIB in Sheet` and `Append Lead Row`.
+Both `Lookup OIB in Sheet` and `Append Lead Row` are set to **Authentication: OAuth2** and expect a
+`Google Sheets OAuth2 API` credential. Select your existing credential on both nodes.
+
+If your existing credential is a **Service Account** instead, switch the **Authentication** dropdown
+on both nodes to *Service Account* first — the credential picker only lists credentials matching the
+selected authentication type.
+
+The Google account behind the credential needs **edit** access to the spreadsheet (for a service
+account, share the sheet with its `client_email`).
 
 The target spreadsheet is hard-coded:
 
