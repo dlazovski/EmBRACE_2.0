@@ -120,40 +120,47 @@ look right, then set it to `false` and run the full county.
 
 ---
 
-## ⚠️ Profile-page selectors are unverified
+## ⚠️ Profile-page fields: how they are extracted
 
-**Read this before your first real run.**
+The search-page selectors are the ones supplied with the spec and work as-is (they fill
+columns A–H). The **profile page** is different: `companywall.hr` is blocked by the network
+egress policy of the environment this workflow was built in, so it was never possible to fetch
+a sample profile and read its markup.
 
-The search-page selectors are exactly the ones supplied with the spec and are trusted as-is.
-The **profile-page** selectors are not: `companywall.hr` is blocked by the network egress
-policy of the environment this workflow was built in, so it was not possible to fetch a sample
-profile and read its markup. The selectors were therefore designed to be *markup-independent*
-rather than guessed from class names, with two layers:
+Rather than guess at CSS classes, `Fetch Company Profile` requests the **raw HTML** (no
+`extract_rules`) and `Add Profile Fields` parses it. Every tag boundary becomes a line break,
+so `<span>MBS</span><span>080123456</span>` becomes two consecutive lines, and each field is
+found by matching its Croatian label and taking the value beside it. This depends on nothing
+but the page's own label wording. Verified against sibling-`<span>`, `<table>`, `<dl>`,
+inner-tag-wrapped (`<b>`/`<small>`) and same-line `Label: value` layouts, including
+entity-encoded labels (`&Scaron;ifra djelatnosti`).
 
-1. **Label-driven XPath** (in `extract_rules` on `Fetch Company Profile`) — matches the element
-   whose own text is exactly the Croatian label (`Vlasnik`, `Direktor`, `E-mail`,
-   `Datum osnivanja`, `NKD`, `MBS`, … with or without a trailing colon) and takes the adjacent
-   value element, trying both the label's next sibling and its wrapper's next sibling. Email
-   additionally prefers any `mailto:` link. Verified against sibling-`<span>`, `<table>` and
-   `<dl>` layouts.
-2. **Page-text fallback** (in the `Add Profile Fields` code node) — the same request also pulls
-   the whole page text, and any field the XPath left empty is recovered by scanning that text
-   for the same labels. This catches layouts where the label is wrapped in an inner tag
-   (`<b>`, `<small>`, …), which defeats layer 1. Email has a final regex fallback.
+Email is handled separately: a `mailto:` link wins, because the value next to an `E-mail`
+label is often a link whose text is *Pošalji*, not the address.
 
-**On your first run, check the `Owner/Director`, `Email`, `Founding Date`, `NKD Code` and `MBS`
-columns.** If any are consistently blank:
+**If a column is still blank**, the node prints a diagnostic to the execution log for the first
+few companies:
 
-- Open the `Fetch Company Profile` node → **Execute step** → look at `page_text` in the output.
-  It shows the exact label wording used on the page.
-- Add the real label to the `LABELS` map in `Add Profile Fields` (fallback layer) and/or to the
-  matching rule in `extract_rules` (XPath layer).
+```
+--- PROFILE PAGE TEXT SAMPLE (NEKA TVRTKA d.o.o.) ---
+missing fields: nkd_code, mbs
+Osnovni podaci | OIB | 12345678901 | Matični broj | 080123456 | ...
+--- end sample ---
+```
 
-If the extracted values look like the *wrong* neighbouring text, the label→value pairing on the
-page differs from all four layouts tested; in that case replace the XPath for that one field
-with a direct CSS selector read off the page.
+That shows the real label wording. Add it to the `LABELS` map at the top of the
+`Add Profile Fields` code node — no selectors involved:
 
----
+```js
+const LABELS = {
+  mbs: ['MBS', 'Matični broj subjekta', 'Matični broj'],   // <- add yours here
+  ...
+};
+```
+
+Because the profile response is full HTML rather than a small JSON payload, execution data is
+larger (roughly 200–500 KB per company). This is fine for a normal county, but on a very large
+run consider setting the workflow's *Save successful production executions* to **Do not save**.
 
 ## Reliability and cost
 
