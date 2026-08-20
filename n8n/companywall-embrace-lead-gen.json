@@ -1,0 +1,1215 @@
+{
+  "name": "EmBRACE — CompanyWall Lead Gen (ScrapingBee → Google Sheets)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-0001",
+      "name": "When clicking Execute Workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1180,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-0002",
+              "name": "county_code",
+              "value": 12,
+              "type": "number"
+            },
+            {
+              "id": "assign-0003",
+              "name": "county_name",
+              "value": "Brodsko-posavska",
+              "type": "string"
+            },
+            {
+              "id": "assign-0004",
+              "name": "employees_from",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "assign-0005",
+              "name": "employees_to",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "assign-0006",
+              "name": "revenue_from",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "assign-0007",
+              "name": "revenue_to",
+              "value": 2000000,
+              "type": "number"
+            },
+            {
+              "id": "assign-0008",
+              "name": "size_category",
+              "value": "Micro",
+              "type": "string"
+            },
+            {
+              "id": "assign-0009",
+              "name": "test_mode",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "set-0010",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -960,
+        300
+      ],
+      "notes": "Edit these by hand before each run. One county + one size per run.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reset per-run counters and start the pagination loop at page 1.\nconst s = $getWorkflowStaticData('global');\ns.written = 0;\ns.skipped = 0;\ns.pageWritten = 0;\ns.pageSkipped = 0;\ns.pageFailedProfiles = 0;\ns.failedPages = [];\ns.failedProfiles = [];\n\nconst cfg = $('Config').first().json;\nconsole.log('=== EmBRACE lead-gen: RUN START ===');\nconsole.log(`County: ${cfg.county_name} (code ${cfg.county_code})  |  Size: ${cfg.size_category}  |  test_mode: ${cfg.test_mode}`);\nconsole.log(`Employees ${cfg.employees_from}-${cfg.employees_to}  |  Revenue ${cfg.revenue_from}-${cfg.revenue_to} EUR`);\nif (cfg.test_mode === true) console.log('test_mode is ON: pagination stops after page 2.');\n\nreturn [{ json: { page: 1 } }];"
+      },
+      "id": "code-0011",
+      "name": "Init Pagination",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------------------------------------------------------------------------\n// Tunable: ScrapingBee renders JavaScript by default (5 credits/call). The\n// companywall search results are server-rendered, so we ask for raw HTML\n// (1 credit/call) and only fall back to render_js=true on an unexpectedly\n// empty page 1 -- see the \"Retry Page 1 With JS\" node.\n// If every page comes back empty, flip this to true.\n// ---------------------------------------------------------------------------\nconst RENDER_JS = false;\n\nconst cfg = $('Config').first().json;\nconst page = Number($input.first().json.page) || 1;\n\nconst search_url = 'https://www.companywall.hr/pretraga?' + [\n  'cr=EUR',\n  `r=${cfg.county_code}`,\n  'sbjact=t',\n  'bly=2025',\n  'dsm[0].Code=411',\n  `dsm[0].From=${cfg.revenue_from}`,\n  `dsm[0].To=${cfg.revenue_to}`,\n  'dsm[1].Code=2138',\n  `dsm[1].From=${cfg.employees_from}`,\n  `dsm[1].To=${cfg.employees_to}`,\n  'dsm[-1].Code=0',\n  'dsm[-1].From=0',\n  'dsm[-1].To=0',\n  'xpnd=true',\n  `p=${page}`,\n].join('&');\n\nconsole.log(`--- Page ${page} -> ${search_url}`);\n\nreturn [{ json: { page, search_url, render_js: RENDER_JS } }];"
+      },
+      "id": "code-0012",
+      "name": "Build Search URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "wait-0013",
+      "name": "Wait 3s (Search)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -300,
+        300
+      ],
+      "webhookId": "11111111-2222-3333-4444-5555555-0014"
+    },
+    {
+      "parameters": {
+        "url": "https://app.scrapingbee.com/api/v1/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.search_url }}"
+            },
+            {
+              "name": "extract_rules",
+              "value": "{\"companies\":{\"selector\":\".searched-companies section.panel\",\"type\":\"list\",\"output\":{\"name\":\"h3.text-uppercase a\",\"profile_url\":\"h3.text-uppercase a@href\",\"status\":\".badge\",\"oib\":\".col-sm-6.col-md-3.mb-2.d-none.d-sm-block span:last-of-type\",\"employees\":\".col-sm-3.col-md-3.text-left.text-xl-center.mb-2 span:last-of-type\",\"revenue\":\".col-sm-3.col-md-2.text-left.text-xl-center.mb-2 span:last-of-type\"}}}"
+            },
+            {
+              "name": "render_js",
+              "value": "={{ $json.render_js ? \"true\" : \"false\" }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "http-0015",
+      "name": "Fetch Search Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -80,
+        300
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_WITH_SCRAPINGBEE_CREDENTIAL_ID",
+          "name": "ScrapingBee"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0016",
+              "leftValue": "={{ $('Build Search URL').first().json.page }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "cond-0017",
+              "leftValue": "={{ $json.error !== undefined }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "cond-0018",
+              "leftValue": "={{ Array.isArray($json.companies) ? $json.companies.length : -1 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0019",
+      "name": "Retry Page 1 With JS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://app.scrapingbee.com/api/v1/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $('Build Search URL').first().json.search_url }}"
+            },
+            {
+              "name": "extract_rules",
+              "value": "{\"companies\":{\"selector\":\".searched-companies section.panel\",\"type\":\"list\",\"output\":{\"name\":\"h3.text-uppercase a\",\"profile_url\":\"h3.text-uppercase a@href\",\"status\":\".badge\",\"oib\":\".col-sm-6.col-md-3.mb-2.d-none.d-sm-block span:last-of-type\",\"employees\":\".col-sm-3.col-md-3.text-left.text-xl-center.mb-2 span:last-of-type\",\"revenue\":\".col-sm-3.col-md-2.text-left.text-xl-center.mb-2 span:last-of-type\"}}}"
+            },
+            {
+              "name": "render_js",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "http-0020",
+      "name": "Retry Page 1 With JS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        360,
+        160
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_WITH_SCRAPINGBEE_CREDENTIAL_ID",
+          "name": "ScrapingBee"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Turn the ScrapingBee response into { page, failed, count, companies }.\n// A failed page is logged and skipped; a genuinely empty page ends the run.\nconst cfg = $('Config').first().json;\nconst page = Number($('Build Search URL').first().json.page) || 1;\nconst raw = $input.first().json;\nconst s = $getWorkflowStaticData('global');\n\n// Per-page counters (the run totals keep accumulating).\ns.pageWritten = 0;\ns.pageSkipped = 0;\ns.pageFailedProfiles = 0;\n\nlet companies = null;\nlet failed = false;\nlet reason = '';\n\nif (raw && raw.error !== undefined) {\n  failed = true;\n  reason = typeof raw.error === 'string' ? raw.error : JSON.stringify(raw.error).slice(0, 300);\n} else if (raw && Array.isArray(raw.companies)) {\n  companies = raw.companies;\n} else {\n  failed = true;\n  reason = 'ScrapingBee response had no \"companies\" array: ' + JSON.stringify(raw).slice(0, 300);\n}\n\ncompanies = companies || [];\n\nif (failed) {\n  s.failedPages.push({ county: cfg.county_name, size_category: cfg.size_category, page, reason });\n  console.log(`!! PAGE FAILED after retries -- ${cfg.county_name} page ${page}: ${reason}`);\n  console.log(`   Skipping page ${page} and continuing with page ${page + 1}.`);\n} else {\n  console.log(`Page ${page}: ${companies.length} companies in search results.`);\n}\n\nreturn [{ json: { page, failed, reason, count: companies.length, companies } }];"
+      },
+      "id": "code-0021",
+      "name": "Parse Search Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0022",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0023",
+      "name": "Page Has Results?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        820,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0024",
+              "leftValue": "={{ $json.failed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0025",
+      "name": "Page Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One n8n item per company. Everything stays raw text -- employees and revenue\n// keep their Croatian formatting (\"1.568.788,47\", \"3\") on purpose; number\n// cleanup happens manually, outside this workflow.\nconst src = $input.first().json;\n\nconst str = (v) => {\n  if (v === null || v === undefined) return '';\n  if (Array.isArray(v)) v = v.find((x) => x !== null && x !== undefined && String(x).trim() !== '') ?? '';\n  return String(v).replace(/\\s+/g, ' ').trim();\n};\n\nreturn (src.companies || [])\n  .filter((c) => c && (c.name || c.profile_url))\n  .map((c) => ({\n    json: {\n      name: str(c.name),\n      profile_url_raw: str(c.profile_url),\n      status: str(c.status),\n      oib: str(c.oib),\n      employees: str(c.employees),\n      revenue: str(c.revenue),\n      page: src.page,\n    },\n  }));"
+      },
+      "id": "code-0026",
+      "name": "Split Out Companies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-0027",
+              "name": "profile_url",
+              "value": "={{ $json.profile_url_raw.startsWith('http') ? $json.profile_url_raw : 'https://www.companywall.hr' + $json.profile_url_raw }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0028",
+              "name": "county",
+              "value": "={{ $('Config').first().json.county_name }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0029",
+              "name": "size_category",
+              "value": "={{ $('Config').first().json.size_category }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "set-0030",
+      "name": "Add Company Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1260,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": "={{ $prevNode.name === 'Add Company Fields' }}"
+        }
+      },
+      "id": "loop-0031",
+      "name": "Loop Over Companies",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1480,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "wait-0032",
+      "name": "Wait 3s (Profile)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1700,
+        260
+      ],
+      "webhookId": "11111111-2222-3333-4444-5555555-0033"
+    },
+    {
+      "parameters": {
+        "url": "https://app.scrapingbee.com/api/v1/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.profile_url }}"
+            },
+            {
+              "name": "extract_rules",
+              "value": "{\"owner_director\":{\"selector\":\"(//*[normalize-space(text())=\\\"Vlasnik\\\" or normalize-space(text())=\\\"Vlasnik:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Vlasnik\\\" or normalize-space(text())=\\\"Vlasnik:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Vlasnici\\\" or normalize-space(text())=\\\"Vlasnici:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Vlasnici\\\" or normalize-space(text())=\\\"Vlasnici:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Direktor\\\" or normalize-space(text())=\\\"Direktor:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Direktor\\\" or normalize-space(text())=\\\"Direktor:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Direktori\\\" or normalize-space(text())=\\\"Direktori:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Direktori\\\" or normalize-space(text())=\\\"Direktori:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Odgovorna osoba\\\" or normalize-space(text())=\\\"Odgovorna osoba:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Odgovorna osoba\\\" or normalize-space(text())=\\\"Odgovorna osoba:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Član uprave\\\" or normalize-space(text())=\\\"Član uprave:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Član uprave\\\" or normalize-space(text())=\\\"Član uprave:\\\"]/parent::*/following-sibling::*[1])[1]\",\"type\":\"item\",\"output\":\"text\",\"selector_type\":\"xpath\",\"clean\":true},\"email\":{\"selector\":\"(//a[starts-with(@href,\\\"mailto:\\\")] | //*[normalize-space(text())=\\\"E-mail\\\" or normalize-space(text())=\\\"E-mail:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"E-mail\\\" or normalize-space(text())=\\\"E-mail:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"E-pošta\\\" or normalize-space(text())=\\\"E-pošta:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"E-pošta\\\" or normalize-space(text())=\\\"E-pošta:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Email\\\" or normalize-space(text())=\\\"Email:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Email\\\" or normalize-space(text())=\\\"Email:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Mail\\\" or normalize-space(text())=\\\"Mail:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Mail\\\" or normalize-space(text())=\\\"Mail:\\\"]/parent::*/following-sibling::*[1])[1]\",\"type\":\"item\",\"output\":\"text\",\"selector_type\":\"xpath\",\"clean\":true},\"founding_date\":{\"selector\":\"(//*[normalize-space(text())=\\\"Datum osnivanja\\\" or normalize-space(text())=\\\"Datum osnivanja:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Datum osnivanja\\\" or normalize-space(text())=\\\"Datum osnivanja:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Datum upisa\\\" or normalize-space(text())=\\\"Datum upisa:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Datum upisa\\\" or normalize-space(text())=\\\"Datum upisa:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Osnovan\\\" or normalize-space(text())=\\\"Osnovan:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Osnovan\\\" or normalize-space(text())=\\\"Osnovan:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Osnovana\\\" or normalize-space(text())=\\\"Osnovana:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Osnovana\\\" or normalize-space(text())=\\\"Osnovana:\\\"]/parent::*/following-sibling::*[1])[1]\",\"type\":\"item\",\"output\":\"text\",\"selector_type\":\"xpath\",\"clean\":true},\"nkd_code\":{\"selector\":\"(//*[normalize-space(text())=\\\"NKD 2007\\\" or normalize-space(text())=\\\"NKD 2007:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"NKD 2007\\\" or normalize-space(text())=\\\"NKD 2007:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"NKD\\\" or normalize-space(text())=\\\"NKD:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"NKD\\\" or normalize-space(text())=\\\"NKD:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Šifra djelatnosti\\\" or normalize-space(text())=\\\"Šifra djelatnosti:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Šifra djelatnosti\\\" or normalize-space(text())=\\\"Šifra djelatnosti:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Pretežita djelatnost\\\" or normalize-space(text())=\\\"Pretežita djelatnost:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Pretežita djelatnost\\\" or normalize-space(text())=\\\"Pretežita djelatnost:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Djelatnost\\\" or normalize-space(text())=\\\"Djelatnost:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Djelatnost\\\" or normalize-space(text())=\\\"Djelatnost:\\\"]/parent::*/following-sibling::*[1])[1]\",\"type\":\"item\",\"output\":\"text\",\"selector_type\":\"xpath\",\"clean\":true},\"mbs\":{\"selector\":\"(//*[normalize-space(text())=\\\"MBS\\\" or normalize-space(text())=\\\"MBS:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"MBS\\\" or normalize-space(text())=\\\"MBS:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Matični broj subjekta\\\" or normalize-space(text())=\\\"Matični broj subjekta:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Matični broj subjekta\\\" or normalize-space(text())=\\\"Matični broj subjekta:\\\"]/parent::*/following-sibling::*[1] | //*[normalize-space(text())=\\\"Matični broj\\\" or normalize-space(text())=\\\"Matični broj:\\\"]/following-sibling::*[1] | //*[normalize-space(text())=\\\"Matični broj\\\" or normalize-space(text())=\\\"Matični broj:\\\"]/parent::*/following-sibling::*[1])[1]\",\"type\":\"item\",\"output\":\"text\",\"selector_type\":\"xpath\",\"clean\":true},\"page_text\":{\"selector\":\"//body\",\"type\":\"item\",\"output\":\"text\",\"selector_type\":\"xpath\"}}"
+            },
+            {
+              "name": "render_js",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "http-0034",
+      "name": "Fetch Company Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        260
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_WITH_SCRAPINGBEE_CREDENTIAL_ID",
+          "name": "ScrapingBee"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extend the company item (search-page fields) with the profile-page fields.\n// No Merge node: this is one sequential item, so we just add keys to it.\nconst base = $('Loop Over Companies').first().json;\nconst raw = $input.first().json;\nconst s = $getWorkflowStaticData('global');\n\nconst str = (v) => {\n  if (v === null || v === undefined) return '';\n  if (Array.isArray(v)) v = v.find((x) => x !== null && x !== undefined && String(x).trim() !== '') ?? '';\n  return String(v).replace(/\\s+/g, ' ').trim();\n};\n\nconst LABELS = {\n  owner_director: ['Vlasnik', 'Vlasnici', 'Direktor', 'Direktori', 'Odgovorna osoba', 'Član uprave'],\n  email: ['E-mail', 'E-pošta', 'Email', 'Mail'],\n  founding_date: ['Datum osnivanja', 'Datum upisa', 'Osnovan', 'Osnovana'],\n  nkd_code: ['NKD 2007', 'NKD', 'Šifra djelatnosti', 'Pretežita djelatnost', 'Djelatnost'],\n  mbs: ['MBS', 'Matični broj subjekta', 'Matični broj'],\n};\n\nconst ALL_LABELS = new Set(Object.values(LABELS).flat().map((l) => l.toLowerCase()));\n\nconst fields = { owner_director: '', email: '', founding_date: '', nkd_code: '', mbs: '' };\n\nconst failed = !raw || typeof raw !== 'object' || raw.error !== undefined;\nconst reason = failed\n  ? (raw && raw.error !== undefined\n      ? (typeof raw.error === 'string' ? raw.error : JSON.stringify(raw.error).slice(0, 300))\n      : 'empty ScrapingBee response')\n  : '';\n\nif (!failed) {\n  for (const key of Object.keys(fields)) fields[key] = str(raw[key]);\n\n  // Safety net: the XPath rules key off exact label text, which can drift. Scan\n  // the page text for the same labels and fill in whatever came back empty.\n  const pageText = typeof raw.page_text === 'string'\n    ? raw.page_text\n    : Array.isArray(raw.page_text) ? raw.page_text.join('\\n') : '';\n  const lines = pageText.split('\\n').map((l) => l.replace(/\\s+/g, ' ').trim()).filter(Boolean);\n  const esc = (v) => v.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n\n  const fromLabels = (labels) => {\n    for (const label of labels) {\n      const re = new RegExp('^' + esc(label) + '\\\\s*:?\\\\s*(.*)$', 'i');\n      for (let i = 0; i < lines.length; i++) {\n        const m = lines[i].match(re);\n        if (!m) continue;\n        const inline = m[1].trim();\n        const candidate = inline || (lines[i + 1] || '');\n        if (candidate && candidate.length <= 300 && !ALL_LABELS.has(candidate.toLowerCase().replace(/:$/, ''))) {\n          return candidate;\n        }\n      }\n    }\n    return '';\n  };\n\n  for (const key of Object.keys(fields)) {\n    if (!fields[key]) fields[key] = fromLabels(LABELS[key]);\n    if (fields[key].length > 300) fields[key] = fields[key].slice(0, 300);\n  }\n\n  if (!fields.email) {\n    const m = pageText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/);\n    if (m) fields.email = m[0];\n  }\n} else {\n  s.failedProfiles.push({ name: base.name, oib: base.oib, url: base.profile_url, page: base.page, reason });\n  s.pageFailedProfiles = (s.pageFailedProfiles || 0) + 1;\n  console.log(`!! PROFILE FETCH FAILED for ${base.name} (OIB ${base.oib}): ${reason}`);\n  console.log('   Writing the row with search-page data only; profile columns left blank.');\n}\n\nreturn [{ json: { ...base, ...fields, profile_failed: failed } }];"
+      },
+      "id": "code-0035",
+      "name": "Add Profile Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2140,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1NHEAPRSMdIECCZ06QmtVZZIhtocWK-omXAY1ObNQjdw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Raw Leads",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "OIB",
+              "lookupValue": "={{ $json.oib }}"
+            }
+          ]
+        },
+        "options": {
+          "returnAllMatches": false
+        }
+      },
+      "id": "gs-0036",
+      "name": "Lookup OIB in Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2360,
+        260
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0037",
+              "leftValue": "={{ String($json.OIB ?? '').trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0038",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2580,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1NHEAPRSMdIECCZ06QmtVZZIhtocWK-omXAY1ObNQjdw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Raw Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Add Profile Fields').first().json.name }}",
+            "Profile URL": "={{ $('Add Profile Fields').first().json.profile_url }}",
+            "Status": "={{ $('Add Profile Fields').first().json.status }}",
+            "OIB": "={{ $('Add Profile Fields').first().json.oib }}",
+            "Employees": "={{ $('Add Profile Fields').first().json.employees }}",
+            "Revenue": "={{ $('Add Profile Fields').first().json.revenue }}",
+            "County": "={{ $('Add Profile Fields').first().json.county }}",
+            "Size Category": "={{ $('Add Profile Fields').first().json.size_category }}",
+            "Owner/Director": "={{ $('Add Profile Fields').first().json.owner_director }}",
+            "Email": "={{ $('Add Profile Fields').first().json.email }}",
+            "Founding Date": "={{ $('Add Profile Fields').first().json.founding_date }}",
+            "NKD Code": "={{ $('Add Profile Fields').first().json.nkd_code }}",
+            "MBS": "={{ $('Add Profile Fields').first().json.mbs }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Profile URL",
+              "displayName": "Profile URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "OIB",
+              "displayName": "OIB",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employees",
+              "displayName": "Employees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Revenue",
+              "displayName": "Revenue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "County",
+              "displayName": "County",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Size Category",
+              "displayName": "Size Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Owner/Director",
+              "displayName": "Owner/Director",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Founding Date",
+              "displayName": "Founding Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NKD Code",
+              "displayName": "NKD Code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MBS",
+              "displayName": "MBS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "cellFormat": "RAW",
+          "useAppend": true
+        }
+      },
+      "id": "gs-0039",
+      "name": "Append Lead Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2800,
+        360
+      ],
+      "credentials": {
+        "googleApi": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $('Add Profile Fields').first().json;\nconst s = $getWorkflowStaticData('global');\ns.written = (s.written || 0) + 1;\ns.pageWritten = (s.pageWritten || 0) + 1;\nconsole.log(`Written: ${c.name} (OIB ${c.oib})`);\nreturn $input.all();"
+      },
+      "id": "code-0040",
+      "name": "Log Row Written",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3020,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $('Add Profile Fields').first().json;\nconst s = $getWorkflowStaticData('global');\ns.skipped = (s.skipped || 0) + 1;\ns.pageSkipped = (s.pageSkipped || 0) + 1;\nconsole.log(`Skipped duplicate: ${c.oib} (${c.name})`);\nreturn $input.all();"
+      },
+      "id": "code-0041",
+      "name": "Log Duplicate Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Page finished (or was skipped after a failed fetch). Log it, then decide\n// whether to fetch another page.\nconst cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\nconst page = Number($('Build Search URL').first().json.page) || 1;\n\nconsole.log(\n  `Page ${page} done: ${s.pageWritten || 0} companies written, ` +\n  `${s.pageSkipped || 0} duplicates skipped, ${s.pageFailedProfiles || 0} profile fetches failed ` +\n  `(run totals: ${s.written || 0} written / ${s.skipped || 0} skipped)`\n);\n\nconst nextPage = page + 1;\nconst stop = cfg.test_mode === true && nextPage > 2;\nif (stop) console.log('test_mode is ON and pages 1-2 are done -- stopping here.');\n\nreturn [{ json: { page: nextPage, stop } }];"
+      },
+      "id": "code-0042",
+      "name": "Next Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0043",
+              "leftValue": "={{ $json.stop }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0044",
+      "name": "Stop Pagination?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\nconst failedPages = s.failedPages || [];\nconst failedProfiles = s.failedProfiles || [];\n\nconsole.log('=== EmBRACE lead-gen: RUN COMPLETE ===');\nconsole.log(`County: ${cfg.county_name} (code ${cfg.county_code})  |  Size: ${cfg.size_category}`);\nconsole.log(`Rows written: ${s.written || 0}  |  Duplicates skipped: ${s.skipped || 0}`);\nconsole.log(`Pages skipped after failed retries: ${failedPages.length}`);\nif (failedPages.length) console.log(JSON.stringify(failedPages, null, 2));\nconsole.log(`Profiles that failed (row written from search data only): ${failedProfiles.length}`);\nif (failedProfiles.length) console.log(JSON.stringify(failedProfiles, null, 2));\n\nreturn [{\n  json: {\n    county: cfg.county_name,\n    county_code: cfg.county_code,\n    size_category: cfg.size_category,\n    test_mode: cfg.test_mode,\n    rows_written: s.written || 0,\n    duplicates_skipped: s.skipped || 0,\n    failed_pages: failedPages,\n    failed_profiles: failedProfiles,\n  },\n}];"
+      },
+      "id": "code-0045",
+      "name": "End Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2140,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Configure this run\nEdit **Config** by hand before every execution. One county + one size category per run.\n\n| code | county |\n| --- | --- |\n| 12 | Brodsko-posavska |\n| 16 | Vukovarsko-srijemska |\n| 4 | Karlovačka |\n| 3 | Sisačko-moslavačka |\n| 9 | Ličko-senjska |\n| 13 | Zadarska |\n| 15 | Šibensko-kninska |\n| 17 | Splitsko-dalmatinska |\n| 19 | Dubrovačko-neretvanska |\n| 7 | Bjelovarsko-bilogorska |\n| 11 | Požeško-slavonska |\n| 1 | Zagrebačka |\n\n**Micro** = employees 1–10, revenue 0–2,000,000 EUR\n**Malo** = employees 11–49, revenue 2,000,000–10,000,000 EUR\n\n`test_mode = true` stops after page 2.",
+        "height": 700,
+        "width": 420,
+        "color": 4
+      },
+      "id": "sticky-0046",
+      "name": "Note 46",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1180,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Search pagination loop\nBuilds the companywall search URL for the current page, waits 3s, scrapes it through ScrapingBee.\n\n**Empty page 1** → retried once with `render_js=true` (reCAPTCHA / session-cookie gate).\n**Empty page 2+** → pagination is done, run ends.\n**Failed page** (after 2 retries) → logged and skipped, run continues on the next page.",
+        "height": 420,
+        "width": 1140,
+        "color": 5
+      },
+      "id": "sticky-0047",
+      "name": "Note 47",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -540,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Per-company enrichment\nOne company at a time (batch size 1): wait 3s → scrape its profile → add owner/director, email, founding date, NKD, MBS onto the **same item**.\n\n⚠️ **Profile selectors are unverified** — see README.md. They match on Croatian label text via XPath, with a page-text fallback. Check the first test run and adjust `extract_rules` on **Fetch Company Profile** if columns come back blank.\n\nA failed profile fetch still writes the row, with the profile columns blank.",
+        "height": 340,
+        "width": 700,
+        "color": 6
+      },
+      "id": "sticky-0048",
+      "name": "Note 48",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1660,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Dedupe + write\nLooks up **OIB** in the `Raw Leads` tab. Already there → skip and log. Not there → append one row.\n\nEmployees and revenue are written as raw Croatian text (`cellFormat: RAW`); no number parsing anywhere in this workflow.\n\nThe `Selected` tab is never touched — the user copies chosen rows there by hand.",
+        "height": 300,
+        "width": 640,
+        "color": 3
+      },
+      "id": "sticky-0049",
+      "name": "Note 49",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        560
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking Execute Workflow": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Init Pagination",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Pagination": {
+      "main": [
+        [
+          {
+            "node": "Build Search URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search URL": {
+      "main": [
+        [
+          {
+            "node": "Wait 3s (Search)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3s (Search)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Search Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Search Page": {
+      "main": [
+        [
+          {
+            "node": "Retry Page 1 With JS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Page 1 With JS?": {
+      "main": [
+        [
+          {
+            "node": "Retry Page 1 With JS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Search Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry Page 1 With JS": {
+      "main": [
+        [
+          {
+            "node": "Parse Search Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Search Page": {
+      "main": [
+        [
+          {
+            "node": "Page Has Results?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page Has Results?": {
+      "main": [
+        [
+          {
+            "node": "Split Out Companies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Page Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page Failed?": {
+      "main": [
+        [
+          {
+            "node": "Next Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "End Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Companies": {
+      "main": [
+        [
+          {
+            "node": "Add Company Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Company Fields": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Companies": {
+      "main": [
+        [
+          {
+            "node": "Next Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait 3s (Profile)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3s (Profile)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Company Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Company Profile": {
+      "main": [
+        [
+          {
+            "node": "Add Profile Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Profile Fields": {
+      "main": [
+        [
+          {
+            "node": "Lookup OIB in Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup OIB in Sheet": {
+      "main": [
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Log Duplicate Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append Lead Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Duplicate Skipped": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Lead Row": {
+      "main": [
+        [
+          {
+            "node": "Log Row Written",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Row Written": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next Page": {
+      "main": [
+        [
+          {
+            "node": "Stop Pagination?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop Pagination?": {
+      "main": [
+        [
+          {
+            "node": "End Run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Search URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "embrace-2-0-lead-gen"
+  },
+  "tags": []
+}
