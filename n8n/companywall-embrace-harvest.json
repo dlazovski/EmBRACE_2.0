@@ -1,0 +1,1434 @@
+{
+  "name": "EmBRACE — CompanyWall Harvest (banded search → Google Sheets)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-0001",
+      "name": "When clicking Execute Workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-0002",
+              "name": "county_code",
+              "value": 12,
+              "type": "number"
+            },
+            {
+              "id": "assign-0003",
+              "name": "county_name",
+              "value": "Brodsko-posavska",
+              "type": "string"
+            },
+            {
+              "id": "assign-0004",
+              "name": "employees_from",
+              "value": 1,
+              "type": "number"
+            },
+            {
+              "id": "assign-0005",
+              "name": "employees_to",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "assign-0006",
+              "name": "revenue_from",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "assign-0007",
+              "name": "revenue_to",
+              "value": 2000000,
+              "type": "number"
+            },
+            {
+              "id": "assign-0008",
+              "name": "size_category",
+              "value": "Micro",
+              "type": "string"
+            },
+            {
+              "id": "assign-0009",
+              "name": "enrich_profiles",
+              "value": false,
+              "type": "boolean"
+            },
+            {
+              "id": "assign-0010",
+              "name": "result_cap",
+              "value": 60,
+              "type": "number"
+            },
+            {
+              "id": "assign-0011",
+              "name": "test_mode",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "set-0012",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1180,
+        300
+      ],
+      "notes": "Edit by hand before each run. One county + one size per run.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reset per-run state and seed the revenue-band queue.\n//\n// CompanyWall caps anonymous search at ~60 results (3 pages x 20) PER QUERY,\n// with no total count shown. A band that comes back at the cap is therefore\n// truncated, not complete -- so we bisect it and try the halves. This is the\n// only way to reach companies past the 60th without a logged-in session.\nconst s = $getWorkflowStaticData('global');\nconst cfg = $('Config').first().json;\n\ns.written = 0;\ns.skipped = 0;\ns.failedPages = [];\ns.failedProfiles = [];\ns.loggedSample = 0;\ns.bandsProcessed = 0;\ns.bandCount = 0;\ns.currentBand = null;\ns.completedBands = [];\ns.cappedBands = [];\ns.bandQueue = [{ from: Number(cfg.revenue_from), to: Number(cfg.revenue_to) }];\n\nconsole.log('=== EmBRACE harvest: RUN START ===');\nconsole.log(`County: ${cfg.county_name} (code ${cfg.county_code})  |  Size: ${cfg.size_category}`);\nconsole.log(`Employees ${cfg.employees_from}-${cfg.employees_to}  |  Revenue ${cfg.revenue_from}-${cfg.revenue_to} EUR`);\nconsole.log(`enrich_profiles: ${cfg.enrich_profiles === true}  |  test_mode: ${cfg.test_mode === true}`);\nif (cfg.enrich_profiles !== true) {\n  console.log('Profile enrichment is OFF: columns I-M stay blank. Fill them later with the enrich workflow.');\n}\nif (cfg.test_mode === true) console.log('test_mode is ON: stopping after 2 revenue bands.');\n\nreturn [{ json: {} }];"
+      },
+      "id": "code-0013",
+      "name": "Init Pagination",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pop the next revenue band off the queue.\nconst cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\n\nif (cfg.test_mode === true && s.bandsProcessed >= 2) {\n  console.log('test_mode: 2 bands done, stopping.');\n  return [{ json: { done: true } }];\n}\n\nconst band = (s.bandQueue || []).shift();\nif (!band) return [{ json: { done: true } }];\n\ns.currentBand = band;\ns.bandCount = 0;\ns.bandsProcessed++;\n\nconsole.log(`=== BAND ${s.bandsProcessed}: revenue ${band.from} - ${band.to} EUR (${s.bandQueue.length} queued) ===`);\nreturn [{ json: { done: false, page: 1, band_from: band.from, band_to: band.to } }];"
+      },
+      "id": "code-0014",
+      "name": "Next Band",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0015",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0016",
+      "name": "Any Bands Left?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ScrapingBee renders JS by default (5 credits). The search results are\n// server-rendered, so we ask for raw HTML (1 credit) and only retry with\n// render_js on the very first query of the run -- see \"Retry First Query With JS\".\nconst RENDER_JS = false;\n\nconst cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\nconst band = s.currentBand;\nconst page = Number($input.first().json.page) || 1;\n\nconst search_url = 'https://www.companywall.hr/pretraga?' + [\n  'cr=EUR',\n  `r=${cfg.county_code}`,\n  'sbjact=t',\n  'bly=2025',\n  'dsm[0].Code=411',\n  `dsm[0].From=${band.from}`,\n  `dsm[0].To=${band.to}`,\n  'dsm[1].Code=2138',\n  `dsm[1].From=${cfg.employees_from}`,\n  `dsm[1].To=${cfg.employees_to}`,\n  'dsm[-1].Code=0',\n  'dsm[-1].From=0',\n  'dsm[-1].To=0',\n  'xpnd=true',\n  `p=${page}`,\n].join('&');\n\nconst is_first_query = s.bandsProcessed === 1 && page === 1;\n\nconsole.log(`--- band ${band.from}-${band.to}, page ${page}`);\nreturn [{ json: { page, search_url, render_js: RENDER_JS, is_first_query, band_from: band.from, band_to: band.to } }];"
+      },
+      "id": "code-0017",
+      "name": "Build Search URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "wait-0018",
+      "name": "Wait 3s (Search)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        420
+      ],
+      "webhookId": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5-0019"
+    },
+    {
+      "parameters": {
+        "url": "https://app.scrapingbee.com/api/v1/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $json.search_url }}"
+            },
+            {
+              "name": "extract_rules",
+              "value": "{\"companies\":{\"selector\":\".searched-companies section.panel\",\"type\":\"list\",\"output\":{\"name\":\"h3.text-uppercase a\",\"profile_url\":\"h3.text-uppercase a@href\",\"status\":\".badge\",\"oib\":\".col-sm-6.col-md-3.mb-2.d-none.d-sm-block span:last-of-type\",\"employees\":\".col-sm-3.col-md-3.text-left.text-xl-center.mb-2 span:last-of-type\",\"revenue\":\".col-sm-3.col-md-2.text-left.text-xl-center.mb-2 span:last-of-type\"}}}"
+            },
+            {
+              "name": "render_js",
+              "value": "={{ $json.render_js ? \"true\" : \"false\" }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "http-0020",
+      "name": "Fetch Search Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        140,
+        420
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_WITH_SCRAPINGBEE_CREDENTIAL_ID",
+          "name": "ScrapingBee"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0021",
+              "leftValue": "={{ $('Build Search URL').first().json.is_first_query }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "cond-0022",
+              "leftValue": "={{ $json.error !== undefined }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "cond-0023",
+              "leftValue": "={{ Array.isArray($json.companies) ? $json.companies.length : -1 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0024",
+      "name": "Retry First Query With JS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        360,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://app.scrapingbee.com/api/v1/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $('Build Search URL').first().json.search_url }}"
+            },
+            {
+              "name": "extract_rules",
+              "value": "{\"companies\":{\"selector\":\".searched-companies section.panel\",\"type\":\"list\",\"output\":{\"name\":\"h3.text-uppercase a\",\"profile_url\":\"h3.text-uppercase a@href\",\"status\":\".badge\",\"oib\":\".col-sm-6.col-md-3.mb-2.d-none.d-sm-block span:last-of-type\",\"employees\":\".col-sm-3.col-md-3.text-left.text-xl-center.mb-2 span:last-of-type\",\"revenue\":\".col-sm-3.col-md-2.text-left.text-xl-center.mb-2 span:last-of-type\"}}}"
+            },
+            {
+              "name": "render_js",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "http-0025",
+      "name": "Retry First Query With JS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        280
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_WITH_SCRAPINGBEE_CREDENTIAL_ID",
+          "name": "ScrapingBee"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\nconst page = Number($('Build Search URL').first().json.page) || 1;\nconst band = s.currentBand;\nconst raw = $input.first().json;\n\nlet companies = null;\nlet failed = false;\nlet reason = '';\n\nif (raw && raw.error !== undefined) {\n  failed = true;\n  reason = typeof raw.error === 'string' ? raw.error : JSON.stringify(raw.error).slice(0, 300);\n} else if (raw && Array.isArray(raw.companies)) {\n  companies = raw.companies;\n} else {\n  failed = true;\n  reason = 'ScrapingBee response had no \"companies\" array: ' + JSON.stringify(raw).slice(0, 300);\n}\n\ncompanies = (companies || []).filter((c) => c && (c.name || c.profile_url));\n\nif (failed) {\n  s.failedPages.push({ county: cfg.county_name, band: `${band.from}-${band.to}`, page, reason });\n  console.log(`!! PAGE FAILED after retries -- band ${band.from}-${band.to} page ${page}: ${reason}`);\n} else {\n  s.bandCount = (s.bandCount || 0) + companies.length;\n  console.log(`band ${band.from}-${band.to} page ${page}: ${companies.length} companies (band running total ${s.bandCount})`);\n}\n\nreturn [{ json: { page, failed, reason, count: companies.length, companies } }];"
+      },
+      "id": "code-0026",
+      "name": "Parse Search Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0027",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0028",
+      "name": "Page Has Results?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0029",
+              "leftValue": "={{ $json.failed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0030",
+      "name": "Page Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1260,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// One item per company. employees and revenue stay raw Croatian text on\n// purpose; number cleanup happens manually, outside this workflow.\nconst src = $input.first().json;\nconst str = (v) => {\n  if (v === null || v === undefined) return '';\n  if (Array.isArray(v)) v = v.find((x) => x !== null && x !== undefined && String(x).trim() !== '') ?? '';\n  return String(v).replace(/\\s+/g, ' ').trim();\n};\nreturn (src.companies || []).map((c) => ({\n  json: {\n    name: str(c.name), profile_url_raw: str(c.profile_url), status: str(c.status),\n    oib: str(c.oib), employees: str(c.employees), revenue: str(c.revenue), page: src.page,\n  },\n}));"
+      },
+      "id": "code-0031",
+      "name": "Split Out Companies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-0032",
+              "name": "profile_url",
+              "value": "={{ $json.profile_url_raw.startsWith('http') ? $json.profile_url_raw : 'https://www.companywall.hr' + $json.profile_url_raw }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0033",
+              "name": "county",
+              "value": "={{ $('Config').first().json.county_name }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0034",
+              "name": "size_category",
+              "value": "={{ $('Config').first().json.size_category }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "set-0035",
+      "name": "Add Company Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1480,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": "={{ $prevNode.name === 'Add Company Fields' }}"
+        }
+      },
+      "id": "loop-0036",
+      "name": "Loop Over Companies",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1700,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0037",
+              "leftValue": "={{ $('Config').first().json.enrich_profiles }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0038",
+      "name": "Enrich Profiles?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "wait-0039",
+      "name": "Wait 3s (Profile)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2140,
+        300
+      ],
+      "webhookId": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5-0040"
+    },
+    {
+      "parameters": {
+        "url": "https://app.scrapingbee.com/api/v1/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "={{ $('Loop Over Companies').first().json.profile_url }}"
+            },
+            {
+              "name": "render_js",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "http-0041",
+      "name": "Fetch Company Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2360,
+        300
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "REPLACE_WITH_SCRAPINGBEE_CREDENTIAL_ID",
+          "name": "ScrapingBee"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extend the company item (search-page fields) with the profile-page fields.\n// No Merge node: this is one sequential item, so we just add keys to it.\n//\n// The profile call returns RAW HTML (no extract_rules) and we parse it here.\n// That is deliberate: it depends on nothing except the page's own Croatian\n// labels, and it lets you SEE the page in this node's input when a field is\n// missing. Add any label wording you find to LABELS below.\nconst base = $('Loop Over Companies').first().json;\nconst raw = $input.first().json;\nconst s = $getWorkflowStaticData('global');\n\nconst LABELS = {\n  owner_director: ['Vlasnik', 'Vlasnici', 'Direktor', 'Direktori', 'Odgovorna osoba', 'Član uprave', 'Uprava'],\n  email: ['E-mail', 'E-pošta', 'Email', 'E-mail adresa', 'Mail'],\n  founding_date: ['Datum osnivanja', 'Datum upisa', 'Osnovan', 'Osnovana', 'Godina osnivanja'],\n  nkd_code: ['NKD 2007', 'NKD', 'Šifra djelatnosti', 'Pretežita djelatnost', 'Djelatnost'],\n  mbs: ['MBS', 'Matični broj subjekta', 'Matični broj'],\n};\n\nconst ALL_LABELS = new Set(Object.values(LABELS).flat().map((l) => l.toLowerCase()));\n\nconst fields = { owner_director: '', email: '', founding_date: '', nkd_code: '', mbs: '' };\n\nconst html = typeof raw?.data === 'string' ? raw.data : (typeof raw === 'string' ? raw : '');\nconst failed = !!(raw && raw.error !== undefined) || !html;\nconst reason = failed\n  ? (raw && raw.error !== undefined\n      ? (typeof raw.error === 'string' ? raw.error : JSON.stringify(raw.error).slice(0, 300))\n      : 'ScrapingBee returned no HTML body')\n  : '';\n\nif (!failed) {\n  const NAMED = {\n    nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '\"', apos: \"'\",\n    scaron: 'š', Scaron: 'Š', ccaron: 'č', Ccaron: 'Č', cacute: 'ć', Cacute: 'Ć',\n    zcaron: 'ž', Zcaron: 'Ž', dstrok: 'đ', Dstrok: 'Đ', eacute: 'é', ndash: '-', mdash: '-',\n  };\n\n  const decode = (t) => t\n    .replace(/&([A-Za-z][A-Za-z0-9]*);/g, (m, name) => (name in NAMED ? NAMED[name] : m))\n    .replace(/&#(\\d+);/g, (_, d) => String.fromCharCode(Number(d)))\n    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));\n\n  // Every tag boundary becomes a line break, so <span>MBS</span><span>123</span>\n  // turns into \"MBS\" / \"123\" on consecutive lines.\n  const lines = decode(\n    html\n      .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n      .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n      .replace(/<!--[\\s\\S]*?-->/g, ' ')\n      .replace(/<[^>]+>/g, '\\n')\n  )\n    .split('\\n')\n    .map((l) => l.replace(/\\s+/g, ' ').trim())\n    .filter(Boolean);\n\n  const esc = (v) => v.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n\n  const fromLabels = (labels) => {\n    for (const label of labels) {\n      const re = new RegExp('^' + esc(label) + '\\\\s*:?\\\\s*(.*)$', 'i');\n      for (let i = 0; i < lines.length; i++) {\n        const m = lines[i].match(re);\n        if (!m) continue;\n        const candidate = (m[1].trim() || lines[i + 1] || '').trim();\n        if (candidate && candidate.length <= 300 && !ALL_LABELS.has(candidate.toLowerCase().replace(/:$/, ''))) {\n          return candidate;\n        }\n      }\n    }\n    return '';\n  };\n\n  for (const key of Object.keys(fields)) fields[key] = fromLabels(LABELS[key]);\n\n  // Email needs its own handling: the value next to the \"E-mail\" label is often\n  // a link whose text is \"Pošalji\"/\"Kontakt\", not the address itself.\n  const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/;\n  const mailto = html.match(/mailto:([^\"'?>\\s]+)/i);\n  if (mailto) {\n    fields.email = decode(mailto[1]).trim();\n  } else if (!EMAIL_RE.test(fields.email)) {\n    const inLabel = fields.email.match(EMAIL_RE);\n    const anywhere = lines.join(' ').match(EMAIL_RE);\n    fields.email = (inLabel && inLabel[0]) || (anywhere && anywhere[0]) || '';\n  }\n\n  // Diagnostics: dump a readable slice of the page for the first company of the\n  // run, and again whenever a field comes back empty, so the real label wording\n  // is visible in the execution log.\n  const missing = Object.keys(fields).filter((k) => !fields[k]);\n  if (!s.loggedSample || missing.length) {\n    if (!s.loggedSample) s.loggedSample = 0;\n    if (s.loggedSample < 3) {\n      s.loggedSample++;\n      console.log(`--- PROFILE PAGE TEXT SAMPLE (${base.name}) ---`);\n      console.log(`missing fields: ${missing.length ? missing.join(', ') : 'none'}`);\n      console.log(lines.slice(0, 150).join(' | '));\n      console.log('--- end sample ---');\n    }\n  }\n} else {\n  s.failedProfiles.push({ name: base.name, oib: base.oib, url: base.profile_url, page: base.page, reason });\n  s.pageFailedProfiles = (s.pageFailedProfiles || 0) + 1;\n  console.log(`!! PROFILE FETCH FAILED for ${base.name} (OIB ${base.oib}): ${reason}`);\n  console.log('   Writing the row with search-page data only; profile columns left blank.');\n}\n\nreturn [{ json: { ...base, ...fields, profile_failed: failed } }];"
+      },
+      "id": "code-0042",
+      "name": "Add Profile Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2580,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// enrich_profiles is off: keep the search-page fields, leave I-M blank.\nconst base = $('Loop Over Companies').first().json;\nreturn [{ json: { ...base, owner_director: '', email: '', founding_date: '', nkd_code: '', mbs: '', profile_failed: false } }];"
+      },
+      "id": "code-0043",
+      "name": "Skip Enrichment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2140,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Single convergence point for both branches (enriched / not enriched), so the\n// Sheets nodes downstream always have one node name to reference.\nreturn $input.all();"
+      },
+      "id": "code-0044",
+      "name": "Prepare Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "documentId": {
+          "__rl": true,
+          "value": "1NHEAPRSMdIECCZ06QmtVZZIhtocWK-omXAY1ObNQjdw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Raw Leads",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "OIB",
+              "lookupValue": "={{ $json.oib }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "id": "gs-0045",
+      "name": "Lookup OIB in Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3020,
+        400
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0046",
+              "leftValue": "={{ String($json.OIB ?? '').trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0047",
+      "name": "Is Duplicate?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3240,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1NHEAPRSMdIECCZ06QmtVZZIhtocWK-omXAY1ObNQjdw",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Raw Leads",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $('Prepare Row').first().json.name }}",
+            "Profile URL": "={{ $('Prepare Row').first().json.profile_url }}",
+            "Status": "={{ $('Prepare Row').first().json.status }}",
+            "OIB": "={{ $('Prepare Row').first().json.oib }}",
+            "Employees": "={{ $('Prepare Row').first().json.employees }}",
+            "Revenue": "={{ $('Prepare Row').first().json.revenue }}",
+            "County": "={{ $('Prepare Row').first().json.county }}",
+            "Size Category": "={{ $('Prepare Row').first().json.size_category }}",
+            "Owner/Director": "={{ $('Prepare Row').first().json.owner_director }}",
+            "Email": "={{ $('Prepare Row').first().json.email }}",
+            "Founding Date": "={{ $('Prepare Row').first().json.founding_date }}",
+            "NKD Code": "={{ $('Prepare Row').first().json.nkd_code }}",
+            "MBS": "={{ $('Prepare Row').first().json.mbs }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Profile URL",
+              "displayName": "Profile URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "OIB",
+              "displayName": "OIB",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Employees",
+              "displayName": "Employees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Revenue",
+              "displayName": "Revenue",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "County",
+              "displayName": "County",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Size Category",
+              "displayName": "Size Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Owner/Director",
+              "displayName": "Owner/Director",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Founding Date",
+              "displayName": "Founding Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NKD Code",
+              "displayName": "NKD Code",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MBS",
+              "displayName": "MBS",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "cellFormat": "RAW",
+          "useAppend": true
+        }
+      },
+      "id": "gs-0048",
+      "name": "Append Lead Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3460,
+        500
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $('Prepare Row').first().json;\nconst s = $getWorkflowStaticData('global');\ns.written = (s.written || 0) + 1;\nconsole.log(`Written: ${c.name} (OIB ${c.oib})`);\nreturn $input.all();"
+      },
+      "id": "code-0049",
+      "name": "Log Row Written",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3680,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $('Prepare Row').first().json;\nconst s = $getWorkflowStaticData('global');\ns.skipped = (s.skipped || 0) + 1;\nconsole.log(`Skipped duplicate: ${c.oib} (${c.name})`);\nreturn $input.all();"
+      },
+      "id": "code-0050",
+      "name": "Log Duplicate Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3460,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safety net: the cap means a band should never exceed 3 pages. If the site\n// ever clamps p= to the last page instead of returning empty, this stops the\n// band rather than looping forever.\nconst MAX_PAGES_PER_BAND = 10;\n\nconst page = Number($('Build Search URL').first().json.page) || 1;\nconst nextPage = page + 1;\nconst endBand = nextPage > MAX_PAGES_PER_BAND;\nif (endBand) console.log(`!! Band hit MAX_PAGES_PER_BAND (${MAX_PAGES_PER_BAND}) -- ending band early.`);\n\nreturn [{ json: { page: nextPage, endBand } }];"
+      },
+      "id": "code-0051",
+      "name": "Next Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1480,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-0052",
+              "leftValue": "={{ $json.endBand }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "if-0053",
+      "name": "Band Finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1700,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// A band that came back at the cap is truncated, not complete: bisect it and\n// queue both halves. Under the cap means we have genuinely seen everything.\nconst cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\nconst RESULT_CAP = Number(cfg.result_cap) || 60;\n\nconst band = s.currentBand;\nconst found = s.bandCount || 0;\n\nif (found >= RESULT_CAP && band.to > band.from) {\n  const mid = Math.floor((band.from + band.to) / 2);\n  // unshift = depth first, so bands get narrow quickly instead of queueing\n  // a huge frontier of wide bands.\n  s.bandQueue.unshift({ from: mid + 1, to: band.to });\n  s.bandQueue.unshift({ from: band.from, to: mid });\n  s.cappedBands.push({ from: band.from, to: band.to, found });\n  console.log(`Band ${band.from}-${band.to} returned ${found} (cap ${RESULT_CAP}) -> splitting into ${band.from}-${mid} and ${mid + 1}-${band.to}`);\n} else if (found >= RESULT_CAP) {\n  s.cappedBands.push({ from: band.from, to: band.to, found, unsplittable: true });\n  console.log(`!! Band ${band.from}-${band.to} is AT THE CAP but cannot be narrowed further.`);\n  console.log('   Companies beyond the first ' + RESULT_CAP + ' at this exact revenue are unreachable via the revenue filter.');\n  console.log('   Narrow employees_from/employees_to and re-run to reach them.');\n} else {\n  s.completedBands.push({ from: band.from, to: band.to, found });\n  console.log(`Band ${band.from}-${band.to} COMPLETE: ${found} companies (under cap).`);\n}\n\nconsole.log(`Run totals so far: ${s.written} written, ${s.skipped} duplicates skipped, ${s.bandQueue.length} bands queued.`);\nreturn [{ json: {} }];"
+      },
+      "id": "code-0054",
+      "name": "Band Done",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\nconst unsplittable = (s.cappedBands || []).filter((b) => b.unsplittable);\n\nconsole.log('=== EmBRACE harvest: RUN COMPLETE ===');\nconsole.log(`County: ${cfg.county_name} (code ${cfg.county_code})  |  Size: ${cfg.size_category}`);\nconsole.log(`Rows written: ${s.written}  |  Duplicates skipped: ${s.skipped}`);\nconsole.log(`Bands processed: ${s.bandsProcessed}  (${(s.completedBands || []).length} complete, ${(s.cappedBands || []).length} were at the cap and split)`);\nconsole.log(`Pages skipped after failed retries: ${(s.failedPages || []).length}`);\nif ((s.failedPages || []).length) console.log(JSON.stringify(s.failedPages, null, 2));\nif (unsplittable.length) {\n  console.log(`!! ${unsplittable.length} band(s) hit the cap and could not be narrowed -- some companies were NOT reachable:`);\n  console.log(JSON.stringify(unsplittable, null, 2));\n}\nif (cfg.enrich_profiles !== true) console.log('Profile columns are blank by design (enrich_profiles = false).');\n\nreturn [{ json: {\n  county: cfg.county_name, size_category: cfg.size_category,\n  rows_written: s.written, duplicates_skipped: s.skipped,\n  bands_processed: s.bandsProcessed, bands_complete: (s.completedBands || []).length,\n  bands_split: (s.cappedBands || []).length, unreachable_bands: unsplittable,\n  failed_pages: s.failedPages || [],\n} }];"
+      },
+      "id": "code-0055",
+      "name": "End Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 1. Configure this run\nEdit **Config** by hand. One county + one size per run.\n\n| code | county | | code | county |\n| ---: | --- | --- | ---: | --- |\n| 1 | Zagrebačka | | 12 | Brodsko-posavska |\n| 3 | Sisačko-moslavačka | | 13 | Zadarska |\n| 4 | Karlovačka | | 15 | Šibensko-kninska |\n| 7 | Bjelovarsko-bilogorska | | 16 | Vukovarsko-srijemska |\n| 9 | Ličko-senjska | | 17 | Splitsko-dalmatinska |\n| 11 | Požeško-slavonska | | 19 | Dubrovačko-neretvanska |\n\n**Micro** = 1–10 employees, 0–2,000,000 EUR\n**Malo** = 11–49 employees, 2,000,000–10,000,000 EUR\n\n`enrich_profiles: false` → harvest only (fast). Fill columns I–M later with the **enrich** workflow.\n`test_mode: true` → stop after 2 revenue bands.",
+        "height": 640,
+        "width": 420,
+        "color": 4
+      },
+      "id": "sticky-0056",
+      "name": "Note n-0057",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1400,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Adaptive revenue banding\nCompanyWall caps anonymous search at **~60 results (3 × 20) per query** and shows no total count.\n\nSo a band returning 60 is **truncated, not complete**. `Band Done` bisects it and queues both halves; a band under 60 is genuinely finished.\n\nThis is what reaches companies past the 60th without a login.",
+        "height": 400,
+        "width": 640,
+        "color": 5
+      },
+      "id": "sticky-0058",
+      "name": "Note n-0059",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Optional enrichment\n`enrich_profiles = false` skips the profile call entirely — no wait, no request. Columns I–M stay blank and the row is still written.\n\nProfile HTML is parsed by Croatian label text in `Add Profile Fields`. If a column is blank, the log prints a `PROFILE PAGE TEXT SAMPLE` with the real labels — add them to the `LABELS` map there.",
+        "height": 360,
+        "width": 700,
+        "color": 6
+      },
+      "id": "sticky-0060",
+      "name": "Note n-0061",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1900,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 4. Dedupe + write\nLooks up **OIB** in `Raw Leads`. Present → skip. Absent → append one row.\n\nBands overlap by design; dedup is what makes that safe.\n\nEmployees/Revenue are written as raw Croatian text (`cellFormat: RAW`).",
+        "height": 320,
+        "width": 600,
+        "color": 3
+      },
+      "id": "sticky-0062",
+      "name": "Note n-0063",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        3000,
+        -140
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking Execute Workflow": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Init Pagination",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Pagination": {
+      "main": [
+        [
+          {
+            "node": "Next Band",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next Band": {
+      "main": [
+        [
+          {
+            "node": "Any Bands Left?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Bands Left?": {
+      "main": [
+        [
+          {
+            "node": "End Run",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Search URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search URL": {
+      "main": [
+        [
+          {
+            "node": "Wait 3s (Search)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3s (Search)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Search Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Search Page": {
+      "main": [
+        [
+          {
+            "node": "Retry First Query With JS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry First Query With JS?": {
+      "main": [
+        [
+          {
+            "node": "Retry First Query With JS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Search Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry First Query With JS": {
+      "main": [
+        [
+          {
+            "node": "Parse Search Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Search Page": {
+      "main": [
+        [
+          {
+            "node": "Page Has Results?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page Has Results?": {
+      "main": [
+        [
+          {
+            "node": "Split Out Companies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Page Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page Failed?": {
+      "main": [
+        [
+          {
+            "node": "Next Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Band Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out Companies": {
+      "main": [
+        [
+          {
+            "node": "Add Company Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Company Fields": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Companies": {
+      "main": [
+        [
+          {
+            "node": "Next Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enrich Profiles?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Profiles?": {
+      "main": [
+        [
+          {
+            "node": "Wait 3s (Profile)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3s (Profile)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Company Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Company Profile": {
+      "main": [
+        [
+          {
+            "node": "Add Profile Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Profile Fields": {
+      "main": [
+        [
+          {
+            "node": "Prepare Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Prepare Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Row": {
+      "main": [
+        [
+          {
+            "node": "Lookup OIB in Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup OIB in Sheet": {
+      "main": [
+        [
+          {
+            "node": "Is Duplicate?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Duplicate?": {
+      "main": [
+        [
+          {
+            "node": "Log Duplicate Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Append Lead Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Duplicate Skipped": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Lead Row": {
+      "main": [
+        [
+          {
+            "node": "Log Row Written",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Row Written": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next Page": {
+      "main": [
+        [
+          {
+            "node": "Band Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Band Finished?": {
+      "main": [
+        [
+          {
+            "node": "Band Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Search URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Band Done": {
+      "main": [
+        [
+          {
+            "node": "Next Band",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "instanceId": "embrace-2-0-lead-gen"
+  },
+  "tags": []
+}
