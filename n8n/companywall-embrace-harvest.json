@@ -712,148 +712,15 @@
           "mode": "name"
         },
         "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "Name": "={{ $('Prepare Row').first().json.name }}",
-            "Profile URL": "={{ $('Prepare Row').first().json.profile_url }}",
-            "Status": "={{ $('Prepare Row').first().json.status }}",
-            "OIB": "={{ $('Prepare Row').first().json.oib }}",
-            "Employees": "={{ $('Prepare Row').first().json.employees }}",
-            "Revenue": "={{ $('Prepare Row').first().json.revenue }}",
-            "County": "={{ $('Prepare Row').first().json.county }}",
-            "Size Category": "={{ $('Prepare Row').first().json.size_category }}",
-            "Owner/Director": "={{ $('Prepare Row').first().json.owner_director }}",
-            "Email": "={{ $('Prepare Row').first().json.email }}",
-            "Founding Date": "={{ $('Prepare Row').first().json.founding_date }}",
-            "NKD Code": "={{ $('Prepare Row').first().json.nkd_code }}",
-            "MBS": "={{ $('Prepare Row').first().json.mbs }}"
-          },
+          "mappingMode": "autoMapInputData",
+          "value": {},
           "matchingColumns": [],
-          "schema": [
-            {
-              "id": "Name",
-              "displayName": "Name",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Profile URL",
-              "displayName": "Profile URL",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Status",
-              "displayName": "Status",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "OIB",
-              "displayName": "OIB",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Employees",
-              "displayName": "Employees",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Revenue",
-              "displayName": "Revenue",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "County",
-              "displayName": "County",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Size Category",
-              "displayName": "Size Category",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Owner/Director",
-              "displayName": "Owner/Director",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Email",
-              "displayName": "Email",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "Founding Date",
-              "displayName": "Founding Date",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "NKD Code",
-              "displayName": "NKD Code",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "MBS",
-              "displayName": "MBS",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": true
+          "schema": []
         },
         "options": {
           "cellFormat": "RAW",
-          "useAppend": true
+          "useAppend": true,
+          "handlingExtraData": "ignoreIt"
         }
       },
       "id": "gs-0049",
@@ -861,7 +728,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        3460,
+        3680,
         500
       ],
       "credentials": {
@@ -877,14 +744,27 @@
     },
     {
       "parameters": {
-        "jsCode": "const c = $('Prepare Row').first().json;\nconst s = $getWorkflowStaticData('global');\ns.written = (s.written || 0) + 1;\nconsole.log(`Written: ${c.name} (OIB ${c.oib})`);\nreturn $input.all();"
+        "jsCode": "// Emit EXACTLY the Sheet's header names as keys, nothing else.\n//\n// The append node maps by header name (mappingMode: autoMapInputData) rather\n// than a schema stored in the node. A stored schema is compared positionally\n// against the live header row on every run, and any drift throws\n// \"Column names were updated after the node's setup\" -- which is what this\n// avoids. Extra keys are ignored (handlingExtraData: ignoreIt) so the internal\n// lowercase fields never leak into the sheet as new columns.\nconst c = $('Prepare Row').first().json;\nconst t = (v) => (v === null || v === undefined ? '' : String(v));\n\nreturn [{ json: {\n  \"Name\": t(c.name),\n  \"Profile URL\": t(c.profile_url),\n  \"Status\": t(c.status),\n  \"OIB\": t(c.oib),\n  \"Employees\": t(c.employees),\n  \"Revenue\": t(c.revenue),\n  \"County\": t(c.county),\n  \"Size Category\": t(c.size_category),\n  \"Owner/Director\": t(c.owner_director),\n  \"Email\": t(c.email),\n  \"Founding Date\": t(c.founding_date),\n  \"NKD Code\": t(c.nkd_code),\n  \"MBS\": t(c.mbs),\n} }];"
       },
       "id": "code-0050",
+      "name": "Map To Sheet Columns",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3460,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $('Prepare Row').first().json;\nconst s = $getWorkflowStaticData('global');\ns.written = (s.written || 0) + 1;\nconsole.log(`Written: ${c.name} (OIB ${c.oib})`);\nreturn $input.all();"
+      },
+      "id": "code-0051",
       "name": "Log Row Written",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3680,
+        3900,
         500
       ]
     },
@@ -892,7 +772,7 @@
       "parameters": {
         "jsCode": "const c = $('Prepare Row').first().json;\nconst s = $getWorkflowStaticData('global');\ns.skipped = (s.skipped || 0) + 1;\nconsole.log(`Skipped duplicate: ${c.oib} (${c.name})`);\nreturn $input.all();"
       },
-      "id": "code-0051",
+      "id": "code-0052",
       "name": "Log Duplicate Skipped",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -905,7 +785,7 @@
       "parameters": {
         "jsCode": "// Safety net: the cap means a band should never exceed 3 pages. If the site\n// ever clamps p= to the last page instead of returning empty, this stops the\n// band rather than looping forever.\nconst MAX_PAGES_PER_BAND = 10;\n\nconst page = Number($('Build Search URL').first().json.page) || 1;\nconst nextPage = page + 1;\nconst endBand = nextPage > MAX_PAGES_PER_BAND;\nif (endBand) console.log(`!! Band hit MAX_PAGES_PER_BAND (${MAX_PAGES_PER_BAND}) -- ending band early.`);\n\nreturn [{ json: { page: nextPage, endBand } }];"
       },
-      "id": "code-0052",
+      "id": "code-0053",
       "name": "Next Page",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -925,7 +805,7 @@
           },
           "conditions": [
             {
-              "id": "cond-0053",
+              "id": "cond-0054",
               "leftValue": "={{ $json.endBand }}",
               "rightValue": "",
               "operator": {
@@ -940,7 +820,7 @@
         "looseTypeValidation": true,
         "options": {}
       },
-      "id": "if-0054",
+      "id": "if-0055",
       "name": "Band Finished?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -953,7 +833,7 @@
       "parameters": {
         "jsCode": "// A band that came back at the cap is truncated, not complete: bisect it and\n// queue both halves. Under the cap means we have genuinely seen everything.\nconst cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\nconst RESULT_CAP = Number(cfg.result_cap) || 60;\n\nconst band = s.currentBand;\nconst found = s.bandCount || 0;\n\nif (found >= RESULT_CAP && band.to > band.from) {\n  const mid = Math.floor((band.from + band.to) / 2);\n  // unshift = depth first, so bands get narrow quickly instead of queueing\n  // a huge frontier of wide bands.\n  s.bandQueue.unshift({ from: mid + 1, to: band.to });\n  s.bandQueue.unshift({ from: band.from, to: mid });\n  s.cappedBands.push({ from: band.from, to: band.to, found });\n  console.log(`Band ${band.from}-${band.to} returned ${found} (cap ${RESULT_CAP}) -> splitting into ${band.from}-${mid} and ${mid + 1}-${band.to}`);\n} else if (found >= RESULT_CAP) {\n  s.cappedBands.push({ from: band.from, to: band.to, found, unsplittable: true });\n  console.log(`!! Band ${band.from}-${band.to} is AT THE CAP but cannot be narrowed further.`);\n  console.log('   Companies beyond the first ' + RESULT_CAP + ' at this exact revenue are unreachable via the revenue filter.');\n  console.log('   Narrow employees_from/employees_to and re-run to reach them.');\n} else {\n  s.completedBands.push({ from: band.from, to: band.to, found });\n  console.log(`Band ${band.from}-${band.to} COMPLETE: ${found} companies (under cap).`);\n}\n\nconsole.log(`Run totals so far: ${s.written} written, ${s.skipped} duplicates skipped, ${s.bandQueue.length} bands queued.`);\nreturn [{ json: {} }];"
       },
-      "id": "code-0055",
+      "id": "code-0056",
       "name": "Band Done",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -966,7 +846,7 @@
       "parameters": {
         "jsCode": "const cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\nconst unsplittable = (s.cappedBands || []).filter((b) => b.unsplittable);\n\nconsole.log('=== EmBRACE harvest: RUN COMPLETE ===');\nconsole.log(`County: ${cfg.county_name} (code ${cfg.county_code})  |  Size: ${cfg.size_category}`);\nconsole.log(`Rows written: ${s.written}  |  Duplicates skipped: ${s.skipped}`);\nconsole.log(`Bands processed: ${s.bandsProcessed}  (${(s.completedBands || []).length} complete, ${(s.cappedBands || []).length} were at the cap and split)`);\nconsole.log(`Pages skipped after failed retries: ${(s.failedPages || []).length}`);\nif ((s.failedPages || []).length) console.log(JSON.stringify(s.failedPages, null, 2));\nif (unsplittable.length) {\n  console.log(`!! ${unsplittable.length} band(s) hit the cap and could not be narrowed -- some companies were NOT reachable:`);\n  console.log(JSON.stringify(unsplittable, null, 2));\n}\nif (cfg.enrich_profiles !== true) console.log('Profile columns are blank by design (enrich_profiles = false).');\n\nreturn [{ json: {\n  county: cfg.county_name, size_category: cfg.size_category,\n  rows_written: s.written, duplicates_skipped: s.skipped,\n  bands_processed: s.bandsProcessed, bands_complete: (s.completedBands || []).length,\n  bands_split: (s.cappedBands || []).length, unreachable_bands: unsplittable,\n  failed_pages: s.failedPages || [],\n} }];"
       },
-      "id": "code-0056",
+      "id": "code-0057",
       "name": "End Run",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -982,8 +862,8 @@
         "width": 420,
         "color": 4
       },
-      "id": "sticky-0057",
-      "name": "Note n-0058",
+      "id": "sticky-0058",
+      "name": "Note n-0059",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -998,8 +878,8 @@
         "width": 640,
         "color": 5
       },
-      "id": "sticky-0059",
-      "name": "Note n-0060",
+      "id": "sticky-0060",
+      "name": "Note n-0061",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1014,8 +894,8 @@
         "width": 700,
         "color": 6
       },
-      "id": "sticky-0061",
-      "name": "Note n-0062",
+      "id": "sticky-0062",
+      "name": "Note n-0063",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1025,13 +905,13 @@
     },
     {
       "parameters": {
-        "content": "## 4. Dedupe + write\nLooks up **OIB** in `Raw Leads`. Present → skip. Absent → append one row.\n\nBands overlap by design; dedup is what makes that safe.\n\nEmployees/Revenue are written as raw Croatian text (`cellFormat: RAW`).",
+        "content": "## 4. Dedupe + write\nLooks up **OIB** in `Raw Leads`. Present → skip. Absent → append one row.\n\nBands overlap by design; dedup is what makes that safe.\n\nEmployees/Revenue are written as raw Croatian text (`cellFormat: RAW`).\n\nThe append maps **by header name**, so row 1 of `Raw Leads` must read exactly:\n`Name | Profile URL | Status | OIB | Employees | Revenue | County | Size Category | Owner/Director | Email | Founding Date | NKD Code | MBS`",
         "height": 320,
         "width": 600,
         "color": 3
       },
-      "id": "sticky-0063",
-      "name": "Note n-0064",
+      "id": "sticky-0064",
+      "name": "Note n-0065",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -1345,6 +1225,17 @@
             "index": 0
           }
         ],
+        [
+          {
+            "node": "Map To Sheet Columns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map To Sheet Columns": {
+      "main": [
         [
           {
             "node": "Append Lead Row",
