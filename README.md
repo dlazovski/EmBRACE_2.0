@@ -1,46 +1,33 @@
 # EmBRACE 2.0 — CompanyWall lead generation
 
-An n8n workflow that builds a lead list for the **EmBRACE** EU grant program (micro/small
-enterprises in eligible Croatian counties) by scraping [companywall.hr](https://www.companywall.hr)
-through [ScrapingBee](https://www.scrapingbee.com) and writing one complete row per company
-into Google Sheets.
+Builds a lead list for the **EmBRACE** EU grant program (micro/small enterprises in eligible
+Croatian counties) by scraping [companywall.hr](https://www.companywall.hr) through
+[ScrapingBee](https://www.scrapingbee.com) into Google Sheets.
 
-**Workflow file:** [`n8n/companywall-embrace-lead-gen.json`](n8n/companywall-embrace-lead-gen.json)
+## The workflows
 
----
+| File | What it does |
+| --- | --- |
+| [`n8n/companywall-embrace-harvest.json`](n8n/companywall-embrace-harvest.json) | **Run first.** Search-page harvest for one county + size, with adaptive revenue banding. Appends columns A–H. |
+| [`n8n/companywall-embrace-enrich.json`](n8n/companywall-embrace-enrich.json) | **Run second.** Fills columns I–M (Owner/Director, Email, Founding Date, NKD Code, MBS) on rows you have chosen, updating them in place. |
+| [`n8n/companywall-embrace-lead-gen.json`](n8n/companywall-embrace-lead-gen.json) | The original single-pass workflow: search + profile in one go. Superseded by the two above, kept for reference. |
 
-## What it does
+## Why it is split in two
 
-One run = **one county + one size category**. There is deliberately no loop over counties;
-you edit the **Config** node by hand and run the workflow again for the next combination.
+CompanyWall caps anonymous search at **~60 results (3 pages × 20) per query** and shows no total
+count anywhere. Confirmed empirically: two different counties each returned exactly 60, and
+narrowing revenue to `0–50,000` — a strict subset of `0–2,000,000` — returned 60 *completely
+different* companies. So a query returning 60 is truncated, not exhausted.
 
-```
-Manual Trigger → Config → Init Pagination
-     ↓
- ┌── Build Search URL → Wait 3s → ScrapingBee (search page)
- │        ↓
- │   empty page 1? → retry once with render_js=true
- │        ↓
- │   no results → END      failed page → log + skip to next page
- │        ↓
- │   Split Out Companies → Add Company Fields
- │        ↓
- │   Loop Over Companies (batch size 1)
- │        ↓
- │     Wait 3s → ScrapingBee (company profile) → Add Profile Fields
- │        ↓
- │     Lookup OIB in "Raw Leads" → duplicate? → skip + log
- │        ↓
- │     Append Lead Row → log
- │        ↓
- └── Next Page (page += 1, stop after page 2 when test_mode)
-```
+The harvest workflow therefore **bisects on revenue**: query a band, and if it comes back at the
+cap, split it in half and queue both halves. A band under the cap is genuinely complete. Bands
+overlap freely because dedup is on OIB.
 
-Search-page data and profile-page data are gathered in a single pass and land on the **same
-item**, so every appended row is complete. There is no Merge node — the profile fields are
-simply added onto the item that already carries the search-page fields.
-
----
+That makes counties far larger than first assumed — potentially thousands of companies each.
+Enriching every one at 2 requests and ~6 seconds apiece would take tens of hours per county-size,
+almost all of it spent on companies that never get selected. So harvesting is cheap and
+exhaustive (~1 request per 20 companies), and enrichment is applied afterwards, only to the rows
+worth the calls.
 
 ## Setup
 
