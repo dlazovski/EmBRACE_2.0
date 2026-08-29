@@ -30,14 +30,8 @@
             },
             {
               "id": "assign-0004",
-              "name": "test_mode",
-              "value": true,
-              "type": "boolean"
-            },
-            {
-              "id": "assign-0005",
-              "name": "test_limit",
-              "value": 5,
+              "name": "max_rows",
+              "value": 300,
               "type": "number"
             }
           ]
@@ -45,7 +39,7 @@
         "includeOtherFields": false,
         "options": {}
       },
-      "id": "set-0006",
+      "id": "set-0005",
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -71,7 +65,7 @@
         },
         "options": {}
       },
-      "id": "gs-0007",
+      "id": "gs-0006",
       "name": "Read Rows",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
@@ -92,9 +86,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Decide which sheet rows still need enriching.\nconst cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\n\ns.updated = 0;\ns.failed = 0;\ns.loggedSample = 0;\ns.failedProfiles = [];\ns.pageFailedProfiles = 0;\n\nconst rows = $input.all().map((i) => i.json);\nconst val = (row, name) => (row[name] === undefined || row[name] === null ? '' : String(row[name]).trim());\n\nlet noUrl = 0;\nlet noOib = 0;\nlet alreadyDone = 0;\nconst out = [];\n\nfor (const row of rows) {\n  const profile_url = val(row, 'Profile URL');\n  const oib = val(row, 'OIB');\n  const name = val(row, 'Name');\n\n  // Any profile field already present means this row has been enriched.\n  const enriched = val(row, 'Owner/Director') || val(row, 'Email') || val(row, 'MBS') ||\n                   val(row, 'Founding Date') || val(row, 'NKD Code');\n\n  if (!profile_url) { noUrl++; continue; }\n  if (!oib) { noOib++; continue; }\n  if (cfg.only_missing === true && enriched) { alreadyDone++; continue; }\n\n  out.push({ json: { name, oib, profile_url, row_number: row.row_number, page: 0 } });\n}\n\nconsole.log('=== EmBRACE enrich: RUN START ===');\nconsole.log(`Tab: \"${cfg.source_tab}\"  |  rows read: ${rows.length}`);\nconsole.log(`Already enriched (skipped): ${alreadyDone}  |  no Profile URL: ${noUrl}  |  no OIB: ${noOib}`);\n\nlet selected = out;\nif (cfg.test_mode === true) {\n  selected = out.slice(0, Number(cfg.test_limit) || 5);\n  console.log(`test_mode is ON: enriching only the first ${selected.length} of ${out.length} rows.`);\n} else {\n  console.log(`To enrich: ${selected.length} rows (~${Math.round(selected.length * 6 / 60)} min at 3s+request each).`);\n}\n\nif (!selected.length) console.log('Nothing to do.');\nreturn selected;"
+        "jsCode": "// Decide which sheet rows still need enriching.\nconst cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\n\ns.updated = 0;\ns.failed = 0;\ns.loggedSample = 0;\ns.failedProfiles = [];\ns.pageFailedProfiles = 0;\n\nconst rows = $input.all().map((i) => i.json);\nconst val = (row, name) => (row[name] === undefined || row[name] === null ? '' : String(row[name]).trim());\n\nlet noUrl = 0;\nlet noOib = 0;\nlet alreadyDone = 0;\nconst out = [];\n\nfor (const row of rows) {\n  const profile_url = val(row, 'Profile URL');\n  const oib = val(row, 'OIB');\n  const name = val(row, 'Name');\n\n  // Any profile field already present means this row has been enriched.\n  const enriched = val(row, 'Owner/Director') || val(row, 'Email') || val(row, 'MBS') ||\n                   val(row, 'Founding Date') || val(row, 'NKD Code');\n\n  if (!profile_url) { noUrl++; continue; }\n  if (!oib) { noOib++; continue; }\n  if (cfg.only_missing === true && enriched) { alreadyDone++; continue; }\n\n  out.push({ json: { name, oib, profile_url, row_number: row.row_number, page: 0 } });\n}\n\nconsole.log('=== EmBRACE enrich: RUN START ===');\nconsole.log(`Tab: \"${cfg.source_tab}\"  |  rows read: ${rows.length}`);\nconsole.log(`Already enriched (skipped): ${alreadyDone}  |  no Profile URL: ${noUrl}  |  no OIB: ${noOib}`);\n\nconst limit = Number(cfg.max_rows) > 0 ? Number(cfg.max_rows) : out.length;\nconst selected = out.slice(0, limit);\nconst remaining = out.length - selected.length;\n\nconsole.log(`Still needing enrichment: ${out.length} rows.`);\nconsole.log(`This run will do ${selected.length} (~${Math.round(selected.length * 6 / 60)} min at 3s + request each).`);\nif (remaining) {\n  console.log(`${remaining} rows left after this run -- run the workflow again to continue.`);\n  console.log(`At ${selected.length} per run that is about ${Math.ceil(remaining / selected.length)} more run(s).`);\n}\nif (!selected.length) console.log('Nothing to do -- every row already has profile data.');\ns.remaining = remaining;\nreturn selected;"
       },
-      "id": "code-0008",
+      "id": "code-0007",
       "name": "Select Rows To Enrich",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -108,7 +102,7 @@
         "batchSize": 1,
         "options": {}
       },
-      "id": "loop-0009",
+      "id": "loop-0008",
       "name": "Loop Over Rows",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -122,7 +116,7 @@
         "amount": 3,
         "unit": "seconds"
       },
-      "id": "wait-0010",
+      "id": "wait-0009",
       "name": "Wait 3s",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -130,7 +124,7 @@
         100,
         420
       ],
-      "webhookId": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5-0011"
+      "webhookId": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5-0010"
     },
     {
       "parameters": {
@@ -160,7 +154,7 @@
           }
         }
       },
-      "id": "http-0012",
+      "id": "http-0011",
       "name": "Fetch Company Profile",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -184,7 +178,7 @@
       "parameters": {
         "jsCode": "// Extend the company item (search-page fields) with the profile-page fields.\n// No Merge node: this is one sequential item, so we just add keys to it.\n//\n// The profile call returns RAW HTML (no extract_rules) and we parse it here.\n// That is deliberate: it depends on nothing except the page's own Croatian\n// labels, and it lets you SEE the page in this node's input when a field is\n// missing. Add any label wording you find to LABELS below.\nconst base = $('Loop Over Rows').first().json;\nconst raw = $input.first().json;\nconst s = $getWorkflowStaticData('global');\n\nconst LABELS = {\n  owner_director: ['Vlasnik', 'Vlasnici', 'Direktor', 'Direktori', 'Odgovorna osoba', 'Član uprave', 'Uprava'],\n  email: ['E-mail', 'E-pošta', 'Email', 'E-mail adresa', 'Mail'],\n  founding_date: ['Datum osnivanja', 'Datum upisa', 'Osnovan', 'Osnovana', 'Godina osnivanja'],\n  nkd_code: ['NKD 2007', 'NKD', 'Šifra djelatnosti', 'Pretežita djelatnost', 'Djelatnost'],\n  mbs: ['MBS', 'Matični broj subjekta', 'Matični broj'],\n};\n\nconst ALL_LABELS = new Set(Object.values(LABELS).flat().map((l) => l.toLowerCase()));\n\nconst fields = { owner_director: '', email: '', founding_date: '', nkd_code: '', mbs: '' };\n\nconst html = typeof raw?.data === 'string' ? raw.data : (typeof raw === 'string' ? raw : '');\nconst failed = !!(raw && raw.error !== undefined) || !html;\nconst reason = failed\n  ? (raw && raw.error !== undefined\n      ? (typeof raw.error === 'string' ? raw.error : JSON.stringify(raw.error).slice(0, 300))\n      : 'ScrapingBee returned no HTML body')\n  : '';\n\nif (!failed) {\n  const NAMED = {\n    nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '\"', apos: \"'\",\n    scaron: 'š', Scaron: 'Š', ccaron: 'č', Ccaron: 'Č', cacute: 'ć', Cacute: 'Ć',\n    zcaron: 'ž', Zcaron: 'Ž', dstrok: 'đ', Dstrok: 'Đ', eacute: 'é', ndash: '-', mdash: '-',\n  };\n\n  const decode = (t) => t\n    .replace(/&([A-Za-z][A-Za-z0-9]*);/g, (m, name) => (name in NAMED ? NAMED[name] : m))\n    .replace(/&#(\\d+);/g, (_, d) => String.fromCharCode(Number(d)))\n    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));\n\n  // Every tag boundary becomes a line break, so <span>MBS</span><span>123</span>\n  // turns into \"MBS\" / \"123\" on consecutive lines.\n  const lines = decode(\n    html\n      .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n      .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n      .replace(/<!--[\\s\\S]*?-->/g, ' ')\n      .replace(/<[^>]+>/g, '\\n')\n  )\n    .split('\\n')\n    .map((l) => l.replace(/\\s+/g, ' ').trim())\n    .filter(Boolean);\n\n  const esc = (v) => v.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n\n  const fromLabels = (labels) => {\n    for (const label of labels) {\n      const re = new RegExp('^' + esc(label) + '\\\\s*:?\\\\s*(.*)$', 'i');\n      for (let i = 0; i < lines.length; i++) {\n        const m = lines[i].match(re);\n        if (!m) continue;\n        const candidate = (m[1].trim() || lines[i + 1] || '').trim();\n        if (candidate && candidate.length <= 300 && !ALL_LABELS.has(candidate.toLowerCase().replace(/:$/, ''))) {\n          return candidate;\n        }\n      }\n    }\n    return '';\n  };\n\n  for (const key of Object.keys(fields)) fields[key] = fromLabels(LABELS[key]);\n\n  // Email needs its own handling: the value next to the \"E-mail\" label is often\n  // a link whose text is \"Pošalji\"/\"Kontakt\", not the address itself.\n  const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/;\n  const mailto = html.match(/mailto:([^\"'?>\\s]+)/i);\n  if (mailto) {\n    fields.email = decode(mailto[1]).trim();\n  } else if (!EMAIL_RE.test(fields.email)) {\n    const inLabel = fields.email.match(EMAIL_RE);\n    const anywhere = lines.join(' ').match(EMAIL_RE);\n    fields.email = (inLabel && inLabel[0]) || (anywhere && anywhere[0]) || '';\n  }\n\n  // Diagnostics: dump a readable slice of the page for the first company of the\n  // run, and again whenever a field comes back empty, so the real label wording\n  // is visible in the execution log.\n  const missing = Object.keys(fields).filter((k) => !fields[k]);\n  if (!s.loggedSample || missing.length) {\n    if (!s.loggedSample) s.loggedSample = 0;\n    if (s.loggedSample < 3) {\n      s.loggedSample++;\n      console.log(`--- PROFILE PAGE TEXT SAMPLE (${base.name}) ---`);\n      console.log(`missing fields: ${missing.length ? missing.join(', ') : 'none'}`);\n      console.log(lines.slice(0, 150).join(' | '));\n      console.log('--- end sample ---');\n    }\n  }\n} else {\n  s.failedProfiles.push({ name: base.name, oib: base.oib, url: base.profile_url, page: base.page, reason });\n  s.pageFailedProfiles = (s.pageFailedProfiles || 0) + 1;\n  console.log(`!! PROFILE FETCH FAILED for ${base.name} (OIB ${base.oib}): ${reason}`);\n  console.log('   Writing the row with search-page data only; profile columns left blank.');\n}\n\nreturn [{ json: { ...base, ...fields, profile_failed: failed } }];"
       },
-      "id": "code-0013",
+      "id": "code-0012",
       "name": "Add Profile Fields",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -283,7 +277,7 @@
           "cellFormat": "RAW"
         }
       },
-      "id": "gs-0014",
+      "id": "gs-0013",
       "name": "Update Row",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
@@ -307,7 +301,7 @@
       "parameters": {
         "jsCode": "const c = $('Add Profile Fields').first().json;\nconst s = $getWorkflowStaticData('global');\nconst filled = ['owner_director', 'email', 'founding_date', 'nkd_code', 'mbs'].filter((k) => c[k]);\n\nif (c.profile_failed) {\n  s.failed = (s.failed || 0) + 1;\n} else {\n  s.updated = (s.updated || 0) + 1;\n}\nconsole.log(`Row ${c.row_number} ${c.name} (OIB ${c.oib}): filled ${filled.length}/5 -> ${filled.join(', ') || 'nothing'}`);\nreturn $input.all();"
       },
-      "id": "code-0015",
+      "id": "code-0014",
       "name": "Log Row Updated",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -318,9 +312,9 @@
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\n\nconsole.log('=== EmBRACE enrich: RUN COMPLETE ===');\nconsole.log(`Tab: \"${cfg.source_tab}\"`);\nconsole.log(`Rows updated: ${s.updated || 0}  |  profile fetches that failed: ${s.failed || 0}`);\nif ((s.failedProfiles || []).length) {\n  console.log('Failed profiles (rows left blank, safe to re-run):');\n  console.log(JSON.stringify(s.failedProfiles, null, 2));\n}\nif (cfg.test_mode === true) console.log('test_mode was ON -- set it to false to enrich every remaining row.');\n\nreturn [{ json: { tab: cfg.source_tab, rows_updated: s.updated || 0, fetch_failures: s.failed || 0, failed_profiles: s.failedProfiles || [] } }];"
+        "jsCode": "const cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\n\nconsole.log('=== EmBRACE enrich: RUN COMPLETE ===');\nconsole.log(`Tab: \"${cfg.source_tab}\"`);\nconsole.log(`Rows updated: ${s.updated || 0}  |  profile fetches that failed: ${s.failed || 0}`);\nif ((s.failedProfiles || []).length) {\n  console.log('Failed profiles (rows left blank, safe to re-run):');\n  console.log(JSON.stringify(s.failedProfiles, null, 2));\n}\nconsole.log('Run the workflow again to continue with the next chunk; already-enriched rows are skipped.');\n\nreturn [{ json: {\n  tab: cfg.source_tab,\n  rows_updated: s.updated || 0,\n  fetch_failures: s.failed || 0,\n  rows_still_needing_enrichment: s.remaining || 0,\n  failed_profiles: s.failedProfiles || [],\n} }];"
       },
-      "id": "code-0016",
+      "id": "code-0015",
       "name": "End Run",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -331,13 +325,13 @@
     },
     {
       "parameters": {
-        "content": "## Fill in the profile columns\nRun this **after** the harvest workflow. It reads a tab, finds rows that have a `Profile URL` but no profile data yet, scrapes each profile once, and **updates those rows in place** — it never appends.\n\n**source_tab** — `Selected` (the handful you actually want) or `Raw Leads` (everything).\n\n**only_missing** — `true` skips rows already enriched, so it is safe to re-run after a partial or failed run.\n\n**test_mode** — `true` does only the first `test_limit` rows.\n\nRows are matched on **OIB**, and only the OIB / Owner-Director / Email / Founding Date / NKD / MBS cells are written. Everything else in the row is left untouched.\n\nA failed profile leaves the row blank rather than half-written, so re-running picks it up again.",
+        "content": "## Fill in the profile columns\nRun this **after** the harvest workflow. It reads a tab, finds rows that have a `Profile URL` but no profile data yet, scrapes each profile once, and **updates those rows in place** — it never appends.\n\n**source_tab** — `Selected` (the handful you actually want) or `Raw Leads` (everything).\n\n**only_missing** — `true` skips rows already enriched, so it is safe to re-run after a partial or failed run.\n\n**max_rows** — how many rows one execution handles (default 300). n8n holds every iteration in memory and each profile is ~300 KB of HTML, so an unbounded run over thousands of rows will run the instance out of memory. Run it repeatedly; `only_missing` makes it resume.\n\nRows are matched on **OIB**, and only the OIB / Owner-Director / Email / Founding Date / NKD / MBS cells are written. Everything else in the row is left untouched.\n\nA failed profile leaves the row blank rather than half-written, so re-running picks it up again.",
         "height": 520,
         "width": 560,
         "color": 4
       },
-      "id": "sticky-0017",
-      "name": "Note n-0018",
+      "id": "sticky-0016",
+      "name": "Note n-0017",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
