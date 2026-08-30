@@ -9,7 +9,27 @@
       "typeVersion": 1,
       "position": [
         -1000,
-        300
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "cron-0002",
+      "name": "Every 10 Minutes (activate to run unattended)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1000,
+        400
       ]
     },
     {
@@ -17,31 +37,31 @@
         "assignments": {
           "assignments": [
             {
-              "id": "assign-0002",
+              "id": "assign-0003",
               "name": "source_tab",
               "value": "Selected",
               "type": "string"
             },
             {
-              "id": "assign-0003",
+              "id": "assign-0004",
               "name": "only_missing",
               "value": true,
               "type": "boolean"
             },
             {
-              "id": "assign-0004",
+              "id": "assign-0005",
               "name": "max_rows",
-              "value": 300,
+              "value": 500,
               "type": "number"
             },
             {
-              "id": "assign-0005",
+              "id": "assign-0006",
               "name": "batch_size",
               "value": 5,
               "type": "number"
             },
             {
-              "id": "assign-0006",
+              "id": "assign-0007",
               "name": "wait_seconds",
               "value": 2,
               "type": "number"
@@ -51,7 +71,7 @@
         "includeOtherFields": false,
         "options": {}
       },
-      "id": "set-0007",
+      "id": "set-0008",
       "name": "Config",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
@@ -77,7 +97,7 @@
         },
         "options": {}
       },
-      "id": "gs-0008",
+      "id": "gs-0009",
       "name": "Read Rows",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
@@ -100,7 +120,7 @@
       "parameters": {
         "jsCode": "// Decide which sheet rows still need enriching.\nconst cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\n\ns.updated = 0;\ns.failed = 0;\ns.loggedSample = 0;\ns.failedProfiles = [];\ns.pageFailedProfiles = 0;\n\nconst rows = $input.all().map((i) => i.json);\nconst val = (row, name) => (row[name] === undefined || row[name] === null ? '' : String(row[name]).trim());\n\nlet noUrl = 0;\nlet noOib = 0;\nlet alreadyDone = 0;\nconst out = [];\n\nfor (const row of rows) {\n  const profile_url = val(row, 'Profile URL');\n  const oib = val(row, 'OIB');\n  const name = val(row, 'Name');\n\n  // Any profile field already present means this row has been enriched.\n  // \"Enriched\" is the reliable marker; the field checks keep rows enriched by\n  // the older workflow (which predates that column) from being redone.\n  const enriched = val(row, 'Enriched') ||\n                   val(row, 'Owner/Director') || val(row, 'Email') || val(row, 'MBS') ||\n                   val(row, 'Founding Date') || val(row, 'NKD Code');\n\n  if (!profile_url) { noUrl++; continue; }\n  if (!oib) { noOib++; continue; }\n  if (cfg.only_missing === true && enriched) { alreadyDone++; continue; }\n\n  out.push({ json: { name, oib, profile_url, row_number: row.row_number, page: 0 } });\n}\n\nconsole.log('=== EmBRACE enrich: RUN START ===');\nconsole.log(`Tab: \"${cfg.source_tab}\"  |  rows read: ${rows.length}`);\nconsole.log(`Already enriched (skipped): ${alreadyDone}  |  no Profile URL: ${noUrl}  |  no OIB: ${noOib}`);\n\nconst limit = Number(cfg.max_rows) > 0 ? Number(cfg.max_rows) : out.length;\nconst selected = out.slice(0, limit);\nconst remaining = out.length - selected.length;\n\nconsole.log(`Still needing enrichment: ${out.length} rows.`);\nconsole.log(`This run will do ${selected.length} (~${Math.round(selected.length * 6 / 60)} min at 3s + request each).`);\nif (remaining) {\n  console.log(`${remaining} rows left after this run -- run the workflow again to continue.`);\n  console.log(`At ${selected.length} per run that is about ${Math.ceil(remaining / selected.length)} more run(s).`);\n}\nif (!selected.length) console.log('Nothing to do -- every row already has profile data.');\ns.remaining = remaining;\nreturn selected;"
       },
-      "id": "code-0009",
+      "id": "code-0010",
       "name": "Select Rows To Enrich",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -114,7 +134,7 @@
         "batchSize": "={{ $('Config').first().json.batch_size }}",
         "options": {}
       },
-      "id": "loop-0010",
+      "id": "loop-0011",
       "name": "Loop Over Rows",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -128,7 +148,7 @@
         "amount": "={{ $('Config').first().json.wait_seconds }}",
         "unit": "seconds"
       },
-      "id": "wait-0011",
+      "id": "wait-0012",
       "name": "Wait Between Batches",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
@@ -136,7 +156,7 @@
         100,
         420
       ],
-      "webhookId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6-0012"
+      "webhookId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6-0013"
     },
     {
       "parameters": {
@@ -166,7 +186,7 @@
           }
         }
       },
-      "id": "http-0013",
+      "id": "http-0014",
       "name": "Fetch Company Profile",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -190,7 +210,7 @@
       "parameters": {
         "jsCode": "// Parse a batch of profile pages and attach the fields to the matching rows.\n//\n// The HTTP node fetched several profiles in parallel. Responses are matched to\n// rows by the OIB printed on the profile page itself, NOT by position: a\n// position-based pairing that ever slipped would write one company's owner and\n// email onto another company's row, silently and unrecoverably. Anything that\n// cannot be matched with confidence is left blank and retried on a later run.\nconst bases = $('Loop Over Rows').all().map((i) => i.json);\nconst responses = $input.all().map((i) => i.json);\nconst s = $getWorkflowStaticData('global');\n\nconst NAMED = {\n  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '\"', apos: \"'\",\n  scaron: 'š', Scaron: 'Š', ccaron: 'č', Ccaron: 'Č', cacute: 'ć', Cacute: 'Ć',\n  zcaron: 'ž', Zcaron: 'Ž', dstrok: 'đ', Dstrok: 'Đ', eacute: 'é', ndash: '-', mdash: '-',\n};\nconst decode = (t) => t\n  .replace(/&([A-Za-z][A-Za-z0-9]*);/g, (m, name) => (name in NAMED ? NAMED[name] : m))\n  .replace(/&#(\\d+);/g, (_, d) => String.fromCharCode(Number(d)))\n  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));\n\nconst LABELS = {\n  owner_director: ['Vlasnik', 'Vlasnici', 'Direktor', 'Direktori', 'Odgovorna osoba', 'Član uprave', 'Uprava'],\n  email: ['E-mail', 'E-pošta', 'Email', 'E-mail adresa', 'Mail'],\n  founding_date: ['Datum osnivanja', 'Datum upisa', 'Osnovan', 'Osnovana', 'Godina osnivanja'],\n  nkd_code: ['NKD 2007', 'NKD', 'Šifra djelatnosti', 'Pretežita djelatnost', 'Djelatnost'],\n  mbs: ['MBS', 'Matični broj subjekta', 'Matični broj'],\n  oib: ['OIB', 'OIB broj', 'Osobni identifikacijski broj'],\n};\nconst ALL_LABELS = new Set(Object.values(LABELS).flat().map((l) => l.toLowerCase()));\nconst EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/;\nconst esc = (v) => v.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n\nfunction parseProfile(html) {\n  const lines = decode(\n    html\n      .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')\n      .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')\n      .replace(/<!--[\\s\\S]*?-->/g, ' ')\n      .replace(/<[^>]+>/g, '\\n')\n  ).split('\\n').map((l) => l.replace(/\\s+/g, ' ').trim()).filter(Boolean);\n\n  const fromLabels = (labels) => {\n    for (const label of labels) {\n      const re = new RegExp('^' + esc(label) + '\\\\s*:?\\\\s*(.*)$', 'i');\n      for (let i = 0; i < lines.length; i++) {\n        const m = lines[i].match(re);\n        if (!m) continue;\n        const candidate = (m[1].trim() || lines[i + 1] || '').trim();\n        if (candidate && candidate.length <= 300 && !ALL_LABELS.has(candidate.toLowerCase().replace(/:$/, ''))) {\n          return candidate;\n        }\n      }\n    }\n    return '';\n  };\n\n  const out = {};\n  for (const key of Object.keys(LABELS)) out[key] = fromLabels(LABELS[key]);\n\n  const mailto = html.match(/mailto:([^\"'?>\\s]+)/i);\n  if (mailto) {\n    out.email = decode(mailto[1]).trim();\n  } else if (!EMAIL_RE.test(out.email)) {\n    const inLabel = out.email.match(EMAIL_RE);\n    const anywhere = lines.join(' ').match(EMAIL_RE);\n    out.email = (inLabel && inLabel[0]) || (anywhere && anywhere[0]) || '';\n  }\n  out.oib = String(out.oib || '').replace(/\\D/g, '');\n  return { fields: out, lines };\n}\n\n// Parse every response once.\nconst parsed = responses.map((raw) => {\n  const html = typeof raw?.data === 'string' ? raw.data : (typeof raw === 'string' ? raw : '');\n  if (!html || (raw && raw.error !== undefined)) {\n    const reason = raw && raw.error !== undefined\n      ? (typeof raw.error === 'string' ? raw.error : JSON.stringify(raw.error).slice(0, 200))\n      : 'empty response';\n    return { failed: true, reason };\n  }\n  const { fields, lines } = parseProfile(html);\n  return { failed: false, fields, lines };\n});\n\n// Index the successful ones by the OIB printed on the page.\nconst byOib = new Map();\nparsed.forEach((p, i) => {\n  if (!p.failed && p.fields.oib) {\n    if (!byOib.has(p.fields.oib)) byOib.set(p.fields.oib, i);\n  }\n});\n\nconst usedResponse = new Set();\nconst results = [];\n\nfor (const base of bases) {\n  const wantOib = String(base.oib || '').replace(/\\D/g, '');\n  let idx = byOib.has(wantOib) ? byOib.get(wantOib) : -1;\n\n  // A page that does not print its OIB can still be paired, but only when the\n  // pairing is unambiguous: exactly one row and one response left over.\n  if (idx === -1) {\n    const freeParsed = parsed.map((p, i) => i).filter((i) => !usedResponse.has(i) && !parsed[i].failed && !parsed[i].fields.oib);\n    const unmatchedBases = bases.filter((b) => {\n      const o = String(b.oib || '').replace(/\\D/g, '');\n      return !byOib.has(o);\n    });\n    if (freeParsed.length === 1 && unmatchedBases.length === 1) idx = freeParsed[0];\n  }\n\n  const blank = { owner_director: '', email: '', founding_date: '', nkd_code: '', mbs: '' };\n\n  if (idx === -1 || usedResponse.has(idx)) {\n    const anyFailed = parsed.find((p) => p.failed);\n    const reason = anyFailed ? anyFailed.reason : `no profile page matched OIB ${wantOib}`;\n    s.failedProfiles = s.failedProfiles || [];\n    s.failedProfiles.push({ name: base.name, oib: base.oib, url: base.profile_url, reason });\n    console.log(`!! ${base.name} (OIB ${base.oib}): ${reason} -- row left blank, a later run will retry it.`);\n    // No stamp: the fetch itself failed, so a later run should retry this row.\n    results.push({ json: { ...base, ...blank, enriched_at: '', profile_failed: true } });\n    continue;\n  }\n\n  usedResponse.add(idx);\n  const p = parsed[idx];\n  const { oib: _pageOib, ...fields } = p.fields;\n\n  const missing = Object.keys(blank).filter((k) => !fields[k]);\n  if (missing.length && (s.loggedSample || 0) < 3) {\n    s.loggedSample = (s.loggedSample || 0) + 1;\n    console.log(`--- PROFILE PAGE TEXT SAMPLE (${base.name}) ---`);\n    console.log(`missing fields: ${missing.join(', ')}`);\n    console.log(p.lines.slice(0, 150).join(' | '));\n    console.log('--- end sample ---');\n  }\n\n  // Stamp it even if the page carried none of the five fields. Without this,\n  // a company that genuinely publishes no contact details looks un-enriched\n  // forever and is re-fetched on every run -- and once more than max_rows of\n  // them accumulate they fill the whole window and no new rows are ever\n  // reached.\n  results.push({ json: { ...base, ...fields, enriched_at: new Date().toISOString(), profile_failed: false } });\n}\n\nreturn results;"
       },
-      "id": "code-0014",
+      "id": "code-0015",
       "name": "Add Profile Fields",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -299,7 +319,7 @@
           "cellFormat": "RAW"
         }
       },
-      "id": "gs-0015",
+      "id": "gs-0016",
       "name": "Update Row",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
@@ -323,7 +343,7 @@
       "parameters": {
         "jsCode": "const s = $getWorkflowStaticData('global');\nconst items = $input.all().map((i) => i.json);\n\nfor (const c of items) {\n  const filled = ['owner_director', 'email', 'founding_date', 'nkd_code', 'mbs'].filter((k) => c[k]);\n  if (c.profile_failed) {\n    s.failed = (s.failed || 0) + 1;\n  } else {\n    s.updated = (s.updated || 0) + 1;\n  }\n  console.log(`${c.name} (OIB ${c.oib}): ${filled.length}/5 -> ${filled.join(', ') || 'nothing'}`);\n}\nconsole.log(`  batch done -- ${s.updated || 0} updated, ${s.failed || 0} failed so far this run.`);\nreturn $input.all();"
       },
-      "id": "code-0016",
+      "id": "code-0017",
       "name": "Log Row Updated",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -336,7 +356,7 @@
       "parameters": {
         "jsCode": "const cfg = $('Config').first().json;\nconst s = $getWorkflowStaticData('global');\n\nconsole.log('=== EmBRACE enrich: RUN COMPLETE ===');\nconsole.log(`Tab: \"${cfg.source_tab}\"`);\nconsole.log(`Rows updated: ${s.updated || 0}  |  profile fetches that failed: ${s.failed || 0}`);\nif ((s.failedProfiles || []).length) {\n  console.log('Failed profiles (rows left blank, safe to re-run):');\n  console.log(JSON.stringify(s.failedProfiles, null, 2));\n}\nconsole.log('Run the workflow again to continue with the next chunk; already-enriched rows are skipped.');\n\nreturn [{ json: {\n  tab: cfg.source_tab,\n  rows_updated: s.updated || 0,\n  fetch_failures: s.failed || 0,\n  rows_still_needing_enrichment: s.remaining || 0,\n  failed_profiles: s.failedProfiles || [],\n} }];"
       },
-      "id": "code-0017",
+      "id": "code-0018",
       "name": "End Run",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -347,13 +367,13 @@
     },
     {
       "parameters": {
-        "content": "## Fill in the profile columns\nRun this **after** the harvest workflow. It reads a tab, finds rows that have a `Profile URL` but no profile data yet, scrapes each profile once, and **updates those rows in place** — it never appends.\n\n**source_tab** — `Selected` (the handful you actually want) or `Raw Leads` (everything).\n\n**only_missing** — `true` skips rows already enriched, so it is safe to re-run after a partial or failed run.\n\n**batch_size** — profiles fetched in parallel (default 5). The HTTP node issues a whole batch at once, so this is what turns ~26 hours into a few. Keep it at or below your ScrapingBee plan concurrency.\n\nResponses are matched to rows by the **OIB printed on the profile page**, never by position, so a reordered or failed response cannot write one row onto another.\n\n**max_rows** — how many rows one execution handles (default 300). n8n holds every iteration in memory and each profile is ~300 KB of HTML, so an unbounded run over thousands of rows will run the instance out of memory. Run it repeatedly; `only_missing` makes it resume.\n\n⚠️ Add a header **`Enriched`** to the tab before running (next free column). Rows are stamped there once their profile has been fetched, so companies that publish no contact details are not retried forever.\n\nRows are matched on **OIB**, and only the OIB / Owner-Director / Email / Founding Date / NKD / MBS / Enriched cells are written. Everything else in the row is left untouched.\n\nA failed profile leaves the row blank rather than half-written, so re-running picks it up again.",
+        "content": "## Fill in the profile columns\n**To run unattended:** save, then toggle the workflow **Active**. The schedule trigger fires every 10 minutes and does one `max_rows` chunk each time, until nothing is left. Deactivate when the log says *Nothing to do*.\n\nRun this **after** the harvest workflow. It reads a tab, finds rows that have a `Profile URL` but no profile data yet, scrapes each profile once, and **updates those rows in place** — it never appends.\n\n**source_tab** — `Selected` (the handful you actually want) or `Raw Leads` (everything).\n\n**only_missing** — `true` skips rows already enriched, so it is safe to re-run after a partial or failed run.\n\n**batch_size** — profiles fetched in parallel (default 5). The HTTP node issues a whole batch at once, so this is what turns ~26 hours into a few. Keep it at or below your ScrapingBee plan concurrency.\n\nResponses are matched to rows by the **OIB printed on the profile page**, never by position, so a reordered or failed response cannot write one row onto another.\n\n**max_rows** — how many rows one execution handles (default 300). n8n holds every iteration in memory and each profile is ~300 KB of HTML, so an unbounded run over thousands of rows will run the instance out of memory. Run it repeatedly; `only_missing` makes it resume.\n\n⚠️ Add a header **`Enriched`** to the tab before running (next free column). Rows are stamped there once their profile has been fetched, so companies that publish no contact details are not retried forever.\n\nRows are matched on **OIB**, and only the OIB / Owner-Director / Email / Founding Date / NKD / MBS / Enriched cells are written. Everything else in the row is left untouched.\n\nA failed profile leaves the row blank rather than half-written, so re-running picks it up again.",
         "height": 520,
         "width": 560,
         "color": 4
       },
-      "id": "sticky-0018",
-      "name": "Note n-0019",
+      "id": "sticky-0019",
+      "name": "Note n-0020",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -364,6 +384,17 @@
   ],
   "connections": {
     "When clicking Execute Workflow": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 10 Minutes (activate to run unattended)": {
       "main": [
         [
           {
